@@ -1,5 +1,5 @@
 import { at, box, floor, inset, nearDepth, noise, screenShape, stroke } from './isometricDrawing';
-import { groundTiles, mapHeight, mapWidth, outdoorProps, project } from './world';
+import { details, groundTiles, mapHeight, mapWidth, outdoorProps, project } from './world';
 import type { MapObject } from './world';
 
 type Art = Phaser.GameObjects.Graphics;
@@ -37,10 +37,20 @@ export function drawScenery(scene: Phaser.Scene) {
   for (let x = 25.4; x < mapWidth - .7; x += 1.55) {
     floor(ground, { x, y: 19.42, width: .6, height: .083 }, 0xb29455, 0, .54);
   }
+  for (const detail of details) {
+    if (detail.type !== 'overgrowth') continue;
+    for (let index = 0; index < detail.width * 14; index += 1) {
+      const x = detail.x + noise(index * 61) * detail.width;
+      const y = detail.y + noise(index * 23) * detail.height;
+      const color = index % 3 === 0 ? 0x8a8156 : 0x535e3e;
+      stroke(ground, color, [at(x - .08, y - .05), at(x, y), at(x + .02, y - .15)], 2, .85);
+    }
+  }
   for (const object of outdoorProps) {
     const art = scene.add.graphics().setDepth(nearDepth(object));
     if (object.type === 'tree') tree(art, ground, object);
     if (object.type === 'car') car(art, ground, object);
+    if (object.type === 'road_barrier') roadBarrier(art, object);
     if (object.type === 'fence') fence(art, object);
     if (object.type === 'privacy_fence') privacyFence(art, object);
     if (object.type === 'porch_rail') porchRail(art, object);
@@ -49,6 +59,20 @@ export function drawScenery(scene: Phaser.Scene) {
       box(art, inset(object, .067), 18, [0x9e8d6d, 0x5b5142, 0x897660]);
       box(art, inset(object, -.075), 8, [0x9e9a88, 0x65665b, 0x817e6e], 16);
     }
+  }
+}
+
+function roadBarrier(art: Art, rect: MapObject) {
+  const alongX = rect.width > rect.height;
+  const length = alongX ? rect.width : rect.height;
+  box(art, rect, 9, [0x958a73, 0x696559, 0x786e5f]);
+  box(art, inset(rect, .065), 10, [0xaaa28b, 0x726e61, 0x827966], 9);
+  for (let offset = .25; offset < length - .2; offset += .74) {
+    const x = rect.x + (alongX ? offset : rect.width);
+    const y = rect.y + (alongX ? rect.height : offset);
+    const farX = x + (alongX ? .20 : 0);
+    const farY = y + (alongX ? 0 : .20);
+    stroke(art, 0xb19a58, [at(x, y, 5), at(farX, farY, 13)], 3);
   }
 }
 

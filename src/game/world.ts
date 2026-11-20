@@ -1,4 +1,4 @@
-import houseAMap from './maps/house-a.json' with { type: 'json' };
+import neighborhood from './maps/neighborhood.json' with { type: 'json' };
 
 export interface WorldPoint {
   readonly x: number;
@@ -15,22 +15,23 @@ export interface MapObject extends WorldRect {
   readonly type: string;
 }
 
-export const tileWidth = houseAMap.tilewidth;
-export const tileHeight = houseAMap.tileheight;
-export const mapWidth = houseAMap.width;
-export const mapHeight = houseAMap.height;
-export const groundTiles = houseAMap.layers.find((layer) => layer.name === 'Ground')?.data ?? [];
+export const tileWidth = neighborhood.tilewidth;
+export const tileHeight = neighborhood.tileheight;
+export const mapWidth = neighborhood.width;
+export const mapHeight = neighborhood.height;
+export const groundTiles = neighborhood.layers.find((layer) => layer.name === 'Ground')?.data ?? [];
 
-function objectsOn(layerName: string): MapObject[] {
-  const layer = houseAMap.layers.find((entry) => entry.name === layerName);
+function objectsOn(layerName: string) {
+  const layer = neighborhood.layers.find((entry) => entry.name === layerName);
   // Tiled's isometric object coordinates use the map's tile height on both axes.
-  return (layer?.objects ?? []).map(({ name, type, x, y, width, height }) => ({
+  return (layer?.objects ?? []).map(({ name, type, x, y, width, height, properties }) => ({
     name,
     type,
     x: x / tileHeight,
     y: y / tileHeight,
     width: width / tileHeight,
     height: height / tileHeight,
+    properties,
   }));
 }
 
@@ -51,11 +52,19 @@ const bounds = requireObject('Navigation', 'neighborhood');
 
 const { x: spawnX, y: spawnY } = requireObject('Entities', 'survivor_spawn');
 export const survivorSpawn: WorldPoint = { x: spawnX, y: spawnY };
-const entities = objectsOn('Entities');
-export const zombieSpawns = entities.filter((entity) => entity.type === 'zombie').map(({ name, x, y }) => {
-  const destination = requireObject('Entities', name + '_wander');
-  return { id: name, position: { x, y }, destination: { x: destination.x, y: destination.y } };
-});
+const zombieAppearances = [
+  'zombie_civilian', 'zombie_worker', 'zombie_hoodie', 'zombie_female', 'zombie_bloody',
+] as const;
+export type ZombieAppearanceId = typeof zombieAppearances[number];
+
+export const zombieSpawns = objectsOn('Entities').filter((entity) => entity.type === 'zombie')
+  .map(({ name, x, y, properties }) => {
+    const destination = requireObject('Entities', name + '_wander');
+    const authoredAppearance = properties?.find((property) => property.name === 'appearance')?.value;
+    const appearanceId = zombieAppearances.find((appearance) => appearance === authoredAppearance);
+    if (!appearanceId) throw new Error(`Unknown Tiled zombie appearance for ${name}: ${authoredAppearance}`);
+    return { id: name, position: { x, y }, destination: { x: destination.x, y: destination.y }, appearanceId };
+  });
 
 export function project({ x, y }: WorldPoint): WorldPoint {
   return { x: (x - y) * tileWidth / 2, y: (x + y) * tileHeight / 2 };

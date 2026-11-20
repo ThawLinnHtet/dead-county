@@ -15,6 +15,11 @@ const graySiding = {
   weathering: 0x575b57, sill: 0x474845, trim: 0xc2bdb1,
 } as const;
 
+const rustSiding = {
+  boards: [0x927765, 0x65463d, 0x865849], seam: 0x493a32, highlight: 0xa57058,
+  weathering: 0x4a4033, sill: 0x433b31, trim: 0xada085,
+} as const;
+
 const brownRoof = {
   gables: [0x82725d, 0x978675], faces: [0x60483e, 0x705547], courses: [0x46352e, 0x4d382f],
   lightShingle: 0xa0846e, darkShingle: 0x44322c, joint: 0x45332c,
@@ -26,6 +31,20 @@ const slateRoof = {
   ridge: 0x41494b, fascia: 0xa29e91, rake: 0xb7b5a6,
 } as const;
 
+const patchedRoof = {
+  gables: [0x756056, 0x897161], faces: [0x48433e, 0x564c46], courses: [0x383731, 0x403933],
+  lightShingle: 0x887467, darkShingle: 0x393531, joint: 0x3a3732,
+  ridge: 0x48433d, fascia: 0x99826a, rake: 0xa89378,
+} as const;
+
+type Siding = typeof creamSiding | typeof graySiding | typeof rustSiding;
+type RoofPalette = typeof brownRoof | typeof slateRoof | typeof patchedRoof;
+const houseMaterials: Readonly<Record<string, { siding: Siding; roof: RoofPalette }>> = {
+  house_a: { siding: creamSiding, roof: brownRoof },
+  house_b: { siding: graySiding, roof: slateRoof },
+  house_c: { siding: rustSiding, roof: patchedRoof },
+};
+
 export function drawHouse(scene: Phaser.Scene) {
   const ground = scene.add.graphics().setDepth(-5000);
   for (const detail of details) {
@@ -33,6 +52,12 @@ export function drawHouse(scene: Phaser.Scene) {
     if (detail.type === 'porch') porch(ground, detail);
     if (detail.type === 'tile_floor') kitchenTile(ground, detail);
     if (detail.type === 'covered_porch') coveredPorchFloor(ground, detail);
+    if (detail.type === 'risk_stoop') riskStoop(ground, detail);
+    if (detail.type === 'concrete_landing') {
+      floor(ground, detail, 0x645c50);
+      floor(ground, inset(detail, .07), 0x938776);
+    }
+    if (detail.type === 'floor_debris') floorDebris(ground, detail);
   }
   for (const house of houses) {
     floor(ground, { x: house.x - .09, y: house.y - .09, width: house.width + .18, height: house.height + .18 }, 0x2b271b, 0, .12);
@@ -43,7 +68,7 @@ export function drawHouse(scene: Phaser.Scene) {
     const house = houses.find((candidate) => wall.name.startsWith(candidate.name + '_'));
     const front = house && (wall.x > house.x + house.width - .3 || wall.y > house.y + house.height - .3);
     const depth = nearDepth(wall);
-    const siding = house?.name === 'house_b' ? graySiding : creamSiding;
+    const siding = (house && houseMaterials[house.name]?.siding) ?? creamSiding;
     if (front) {
       paintWall(scene.add.graphics().setDepth(depth), wall, cutawayHeight, 0, siding);
       const upper = scene.add.graphics().setDepth(depth + .02);
@@ -56,7 +81,7 @@ export function drawHouse(scene: Phaser.Scene) {
 
   const roofArt = roofs.map((roof) => {
     const art = scene.add.graphics().setDepth(nearDepth(roof) + .4);
-    paintRoof(art, roof, roof.name === 'house_b' ? slateRoof : brownRoof);
+    paintRoof(art, roof, houseMaterials[roof.name]?.roof ?? brownRoof);
     return { art, houseId: roof.name };
   });
   for (const detail of details.filter((entry) => entry.type === 'covered_porch')) {
@@ -108,6 +133,27 @@ function kitchenTile(art: Art, rect: WorldRect) {
   }
 }
 
+function riskStoop(art: Art, rect: WorldRect) {
+  floor(art, rect, 0x645c50);
+  floor(art, inset(rect, .08), 0x8a7b6a);
+  const step = { x: rect.x + .24, y: rect.y + rect.height - .15, width: rect.width - .48, height: .28 };
+  floor(art, { ...step, y: step.y + .24 }, 0x6a5c4c);
+  floor(art, step, 0xa09580);
+  stroke(art, 0x51463b, [
+    at(rect.x + .25, rect.y + .25), at(rect.x + .61, rect.y + .42),
+    at(rect.x + .58, rect.y + .62), at(rect.x + .89, rect.y + .74),
+  ], 1.5);
+}
+
+function floorDebris(art: Art, rect: WorldRect) {
+  for (let index = 0; index < 12; index += 1) {
+    const x = rect.x + noise(index * 17) * (rect.width - .12);
+    const y = rect.y + noise(index * 47) * (rect.height - .11);
+    floor(art, { x, y, width: .08 + noise(index * 11) * .06, height: .07 },
+      index % 3 === 0 ? 0xa5977c : 0x494035, 0, .7);
+  }
+}
+
 function coveredPorchFloor(art: Art, rect: WorldRect) {
   floor(art, rect, 0x403b33);
   floor(art, inset(rect, .045), 0x8a8170);
@@ -150,7 +196,7 @@ function paintPorchCanopy(art: Art, rect: WorldRect) {
 }
 
 function paintWall(
-  art: Art, wall: MapObject, rise: number, base: number, siding: typeof creamSiding | typeof graySiding,
+  art: Art, wall: MapObject, rise: number, base: number, siding: Siding,
 ): void {
   box(art, wall, rise, siding.boards, base);
   const vertical = wall.height > wall.width;
@@ -182,10 +228,17 @@ function paintWall(
     stroke(art, 0xa69477, [near((start + end) / 2, 25), near((start + end) / 2, 50)], 1.8);
     stroke(art, 0xa68e73, [near(start, 38), near(end, 38)], 1.6);
     stroke(art, 0xd1c09d, [near(start - .09, 23), near(end + .09, 23)], 2.5);
+    if (siding === rustSiding) {
+      for (const z of [30, 41]) {
+        const board = [near(start - .13, z + 3), near(end + .12, z)];
+        stroke(art, 0x43372e, board, 7);
+        stroke(art, 0x85705a, board, 4);
+      }
+    }
   }
 }
 
-function paintRoof(art: Art, rect: WorldRect, palette: typeof brownRoof | typeof slateRoof) {
+function paintRoof(art: Art, rect: WorldRect, palette: RoofPalette) {
   const { x, y, width, height } = rect;
   const farX = x + width;
   const farY = y + height;
@@ -216,6 +269,14 @@ function paintRoof(art: Art, rect: WorldRect, palette: typeof brownRoof | typeof
         stroke(art, palette.joint, [peakAt(left, course), peakAt(left, course + spacing)], .9, .75);
       }
     }
+  }
+  if (palette === patchedRoof) {
+    const start = height * .65;
+    const end = height * .87;
+    const left = width * .53;
+    const right = width * .75;
+    shape(art, 0x3e4744, [peakAt(left, start), peakAt(right, start), peakAt(right, end), peakAt(left, end)]);
+    for (const x of [left, right]) stroke(art, 0x797665, [peakAt(x, start), peakAt(x, end)], 1.4, .8);
   }
   stroke(art, palette.ridge, [at(x, midY, ridge), at(farX, midY, ridge)], 3);
   stroke(art, palette.fascia, [at(x, farY, wallHeight), at(farX, farY, wallHeight)], 3);

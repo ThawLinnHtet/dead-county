@@ -26,6 +26,7 @@ export const authoredStock: ContainerStock = {
   starter_container: ['baseball_bat', 'water_bottle'],
   house_b_kitchen_cabinet: ['canned_food'],
   house_b_living_cabinet: ['water_bottle', 'bandage'],
+  house_c_kitchen_cabinet: ['canned_food', 'water_bottle'],
 };
 
 const containerTypes = new Set(['cabinet', 'drawer', 'supply_box']);

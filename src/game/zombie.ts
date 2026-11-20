@@ -2,7 +2,8 @@ import { advanceAttack, aimFrom, batConfig, beginAttack, isInReach } from './com
 import type { AttackState } from './combat.ts';
 import { findRoute } from './navigation.ts';
 import { canOccupy, canTraverse, hasLineOfSight, zombieSpawns } from './world.ts';
-import type { WorldPoint } from './world.ts';
+import type { WorldPoint, ZombieAppearanceId } from './world.ts';
+export type { ZombieAppearanceId } from './world.ts';
 
 export interface ZombieSpawn {
   readonly id: string;
@@ -10,8 +11,6 @@ export interface ZombieSpawn {
   readonly destination: WorldPoint;
   readonly appearanceId?: ZombieAppearanceId;
 }
-
-export type ZombieAppearanceId = 'zombie_civilian' | 'zombie_worker' | 'zombie_hoodie' | 'zombie_female' | 'zombie_bloody';
 
 type ZombieBehavior = {
   readonly kind: 'wander';

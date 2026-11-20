@@ -11,7 +11,16 @@ import type { GameCoordinator, GameState, InteractionTarget } from './gameCoordi
 import { itemDefinitions } from './items';
 import groundUrl from './maps/ground.png';
 import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, unproject } from './world';
+import zombieVariantsUrl from './zombie-variants.png';
 import { zombieConfig } from './zombie';
+import type { ZombieAppearanceId } from './zombie';
+
+const zombieVariantFrames: Record<Exclude<ZombieAppearanceId, 'zombie_civilian'>, number> = {
+  zombie_worker: 0,
+  zombie_hoodie: 1,
+  zombie_female: 2,
+  zombie_bloody: 3,
+};
 
 const outsideTerrainTiles = 7;
 type InteractionPromptPosition = { target: InteractionTarget; x: number; y: number };
@@ -47,6 +56,7 @@ export class HouseScene extends Phaser.Scene {
     this.load.spritesheet('ground', groundUrl, { frameWidth: tileWidth, frameHeight: tileHeight });
     this.load.spritesheet('actors', actorsUrl, { frameWidth: 40, frameHeight: 58 });
     this.load.spritesheet('survivor-female', femaleSurvivorUrl, { frameWidth: 40, frameHeight: 58 });
+    this.load.spritesheet('zombie-variants', zombieVariantsUrl, { frameWidth: 40, frameHeight: 58 });
   }
 
   create() {
@@ -207,8 +217,12 @@ export class HouseScene extends Phaser.Scene {
     for (const zombie of zombies) {
       let art = this.zombieArt.get(zombie.id);
       if (!art) {
+        const appearance = zombie.appearanceId;
+        const sprite = appearance === 'zombie_civilian'
+          ? this.add.sprite(0, 0, 'actors', 7)
+          : this.add.sprite(0, 0, 'zombie-variants', zombieVariantFrames[appearance]);
         art = {
-          sprite: this.add.sprite(0, 0, 'actors', 7).setOrigin(.5, 56 / 58),
+          sprite: sprite.setOrigin(.5, 56 / 58),
           shadow: this.add.ellipse(0, 0, 22, 8, 0x272721, .42),
           effects: this.add.graphics(),
           lastHitAtMs: zombie.lastBatHitAtMs,

@@ -8,6 +8,7 @@ import type { PauseSaveActions } from './PauseMenu';
 const locationNames: Readonly<Record<string, string>> = {
   house_a: 'House A',
   house_b: 'House B',
+  house_c: 'House C',
 };
 
 export function PlaySession({
