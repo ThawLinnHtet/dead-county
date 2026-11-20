@@ -16,9 +16,9 @@
 
 .minimap,
 .full-map {
-  --map-ink: #0c0f10;
-  --map-paper: #eee6d6;
-  --map-focus: #d6ae6d;
+  --map-ink: var(--dc-bg);
+  --map-paper: var(--dc-text);
+  --map-focus: var(--dc-focus);
   --map-border: #766e5c;
   --map-arrow-shape: polygon(50% 0, 100% 100%, 50% 76%, 0 100%);
 }
@@ -134,7 +134,7 @@
   padding: 0;
   border: 1px solid var(--map-border);
   border-radius: 4px;
-  background: #1b1e1d;
+  background: var(--dc-surface);
   color: var(--map-paper);
   box-shadow: 0 16px 55px rgb(0 0 0 / 64%);
 }
@@ -150,7 +150,7 @@
   justify-content: space-between;
   gap: .5rem;
   padding: .38rem .75rem .38rem 1.05rem;
-  border-bottom: 1px solid #49544a;
+  border-bottom: 1px solid var(--dc-border);
 }
 
 .full-map__header h2 {
@@ -169,7 +169,7 @@
 
 .full-map__dismiss kbd {
   padding: .13rem .35rem;
-  border: 1px solid #49544a;
+  border: 1px solid var(--dc-border);
   border-radius: 3px;
   color: #d8cfbb;
   font-size: .72rem;
@@ -179,7 +179,7 @@
   width: 2.5rem;
   height: 2.5rem;
   margin-left: .35rem;
-  border: 1px solid #49544a;
+  border: 1px solid var(--dc-border);
   border-radius: 3px;
   color: var(--map-paper);
   font: 400 1.45rem/1 Inter, Arial, sans-serif;
@@ -187,7 +187,7 @@
 }
 
 .full-map__dismiss button:hover {
-  background: #343a33;
+  background: var(--dc-surface-elevated);
 }
 
 .full-map__dismiss button:focus-visible {

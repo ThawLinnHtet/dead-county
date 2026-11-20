@@ -13,12 +13,12 @@ function screenAngle(direction: WorldPoint) {
 }
 
 export function drawBat(
-  art: Graphics, feet: WorldPoint, facingLeft: boolean, attack: AttackState | null, lean: number,
+  art: Graphics, feet: WorldPoint, facingLeft: boolean, attack: AttackState | null, lean: number, height: number,
 ) {
   const side = facingLeft ? -1 : 1;
   const { x, y } = feet;
   let gripX = x + side * 8;
-  let gripY = y - 25;
+  let gripY = y - 25 * height;
   let angle = -1.05;
   if (attack) {
     const aim = screenAngle(attack.direction);

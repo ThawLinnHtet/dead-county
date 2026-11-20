@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { formatSurvivalTime } from '../ui/formatSurvivalTime';
 import { GameOverScreen } from '../ui/GameOverScreen';
+import type { DeathSaveStatus } from '../save/useRunFlow';
 import { houseNames } from './drawNeighborhoodMap';
 import { GameViewport } from './GameViewport';
 import type { GameCoordinator, GameOverResult } from './gameCoordinator';
 import { InventoryPanel } from './InventoryPanel';
+import { InventoryPreview } from './InventoryPreview';
 import { FullMap, Minimap } from './NeighborhoodMap';
 import { PauseMenu } from './PauseMenu';
 import type { PauseSaveActions } from './PauseMenu';
@@ -15,11 +17,15 @@ export function PlaySession({
   onNewRun,
   onMainMenu,
   pauseSaveActions,
+  deathSaveStatus,
+  onRecoverDeathSave,
 }: {
   coordinator: GameCoordinator;
   onNewRun: () => void;
   onMainMenu: () => void;
   pauseSaveActions?: PauseSaveActions;
+  deathSaveStatus?: DeathSaveStatus;
+  onRecoverDeathSave?: () => void;
 }) {
   const foreground = useRef<HTMLDivElement>(null);
   const pause = useSyncExternalStore(coordinator.subscribe, coordinator.getPauseState);
@@ -73,7 +79,10 @@ export function PlaySession({
   }, [pause.isPaused, gameOver]);
 
   if (gameOver && revealedResult === gameOver) {
-    return <GameOverScreen result={gameOver} onNewRun={onNewRun} onMainMenu={onMainMenu} />;
+    return (
+      <GameOverScreen result={gameOver} onNewRun={onNewRun} onMainMenu={onMainMenu}
+        saveStatus={deathSaveStatus} onRecoverSave={onRecoverDeathSave} />
+    );
   }
 
   return (
@@ -93,6 +102,7 @@ export function PlaySession({
           </div>
           <Minimap coordinator={coordinator} />
         </div>
+        <InventoryPreview coordinator={coordinator} />
         <aside className="movement-hint" aria-label="Gameplay controls">
           <span className="movement-keys" aria-hidden="true">
             <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>

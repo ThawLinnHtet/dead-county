@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { GameCoordinator } from './gameCoordinator';
+import { ItemIcon } from './ItemIcon';
 import { itemDefinitions } from './items';
 import type { ItemInstance } from './items';
 import { roundSurvivalStat, survivalStatNames } from './survival';
@@ -9,10 +10,6 @@ import './inventoryPanel.css';
 type Selection = { source: 'loot' | 'inventory'; id: string };
 const noItems: readonly ItemInstance[] = [];
 const containerNames: Record<string, string> = { cabinet: 'Cabinet', drawer: 'Drawer', supply_box: 'Supply Box' };
-
-function ItemIcon({ item }: { item: ItemInstance }) {
-  return <img className="item-icon" src={`/assets/items/${item.kind}.png`} alt="" draggable={false} />;
-}
 
 export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -128,7 +125,7 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
                       aria-pressed={selection?.source === 'loot' && selection.id === item.id}
                       onClick={() => select('loot', item.id)}
                     >
-                      <ItemIcon item={item} />
+                      <ItemIcon kind={item.kind} />
                     </button>
                   ))}
                 </div>
@@ -162,7 +159,7 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
                   : `Slot ${index + 1}, empty`}
                 onClick={() => { if (item) select('inventory', item.id); }}
               >
-                {item && <ItemIcon item={item} />}
+                {item && <ItemIcon kind={item.kind} />}
                 {item && item.id === equippedId && <span className="equipment-mark" aria-hidden="true">✓</span>}
                 {item && index === received?.slot && item.id === received.itemId && (
                   <span className="received-item" onAnimationEnd={() => setReceived(null)} />
@@ -175,7 +172,7 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
           {selected && definition ? (
             <>
               <div className="item-detail-heading">
-                <ItemIcon item={selected} />
+                <ItemIcon kind={selected.kind} />
                 <div><h2>{definition.name}</h2><p>{definition.category}</p></div>
               </div>
               <p>{definition.description}</p>

@@ -1,11 +1,11 @@
 import { advanceAttack, aimFrom, batConfig, beginAttack, selectBatTarget } from './combat.ts';
 import type { AttackState } from './combat.ts';
-import { canOccupy, contains, houses, survivorSpawn, unproject } from './world.ts';
+import { actorRadius, canOccupy, contains, houses, survivorSpawn, unproject } from './world.ts';
 import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
 import { authoredStock, findDropPosition, itemDefinitions, reachableContainers, reachableDrops, seedContainers } from './items.ts';
 import type { ConsumableStat, ContainerContents, ContainerStock, DroppedItem, ItemInstance } from './items.ts';
-import { createZombies } from './zombie.ts';
+import { createZombies, restoreZombies } from './zombie.ts';
 import type { ZombieSpawn, ZombieState } from './zombie.ts';
 import { getSurvivalStep } from './survival.ts';
 
@@ -41,10 +41,20 @@ export interface GameState {
   readonly gameOver: GameOverResult | null;
 }
 
+export interface GameSnapshot {
+  readonly survivor: Omit<GameState['survivor'], 'gait'>;
+  readonly zombies: GameState['zombies'];
+  readonly containers: ContainerContents;
+  readonly droppedItems: GameState['droppedItems'];
+  readonly activeTimeMs: number;
+  readonly occupiedHouseId?: string | null;
+}
+
 export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   getState(): GameState;
   subscribe(listener: () => void): () => void;
   setMovement(screenDirection: WorldPoint, sprintHeld?: boolean): void;
+  aimAt(target: WorldPoint | null): void;
   step(deltaMs: number): GameState;
   startBatSwing(target: WorldPoint): boolean;
   getInteractionTarget(): InteractionTarget | null;
@@ -98,9 +108,9 @@ function getHouseAt(position: WorldPoint, previous?: string | null): string | nu
   )?.name ?? null;
 }
 
-function move(position: WorldPoint, dx: number, dy: number): WorldPoint {
+function move(position: WorldPoint, dx: number, dy: number, canStep: (from: WorldPoint, to: WorldPoint) => boolean): WorldPoint {
   const straight = { x: position.x + dx, y: position.y + dy };
-  if (canOccupy(straight)) return straight;
+  if (canStep(position, straight)) return straight;
 
   // Sliding follows the walkable axis at a wall instead of catching its corners.
   const horizontal = { x: straight.x, y: position.y };
@@ -108,38 +118,48 @@ function move(position: WorldPoint, dx: number, dy: number): WorldPoint {
   const alternatives = Math.abs(dx) >= Math.abs(dy)
     ? [horizontal, vertical]
     : [vertical, horizontal];
-  return alternatives.find((candidate) => canOccupy(candidate)) ?? position;
+  return alternatives.find((candidate) => canStep(position, candidate)) ?? position;
 }
 
-function travel(position: WorldPoint, direction: WorldPoint, distance: number): WorldPoint {
+function travel(position: WorldPoint, direction: WorldPoint, distance: number, canStep: (from: WorldPoint, to: WorldPoint) => boolean): WorldPoint {
   if (distance <= 0 || (!direction.x && !direction.y)) return position;
 
   const steps = Math.ceil(distance / movementConfig.maxCollisionStep);
   const stride = distance / steps;
   let current = position;
   for (let index = 0; index < steps; index += 1) {
-    const next = move(current, direction.x * stride, direction.y * stride);
+    const next = move(current, direction.x * stride, direction.y * stride, canStep);
     if (next.x === current.x && next.y === current.y) break;
     current = next;
   }
   return current;
 }
 
-export function createGameCoordinator({
-  position = survivorSpawn,
-  characterId = 'survivor_male',
-  zombieSpawns,
-  containerStock = authoredStock,
-}: {
+export function restoreGameCoordinator(snapshot: GameSnapshot): GameCoordinator {
+  return makeGameCoordinator({ position: snapshot.survivor.position }, snapshot);
+}
+
+type FreshRunOptions = {
   position?: WorldPoint;
   characterId?: SurvivorId;
   zombieSpawns?: readonly ZombieSpawn[];
   containerStock?: ContainerStock;
-} = {}): GameCoordinator {
+};
+
+export function createGameCoordinator(options: FreshRunOptions = {}): GameCoordinator {
+  return makeGameCoordinator(options);
+}
+
+function makeGameCoordinator({
+  position = survivorSpawn,
+  characterId = 'survivor_male',
+  zombieSpawns,
+  containerStock = authoredStock,
+}: FreshRunOptions, snapshot?: GameSnapshot): GameCoordinator {
   if (!canOccupy(position)) throw new Error('The survivor must start on walkable ground');
-  const zombies = createZombies(zombieSpawns);
+  const zombies = snapshot ? restoreZombies(snapshot.zombies, snapshot.activeTimeMs) : createZombies(zombieSpawns);
   let state: GameState = {
-    survivor: {
+    survivor: snapshot ? { ...snapshot.survivor, gait: 'idle' } : {
       characterId,
       position: { ...position },
       health: 100,
@@ -156,16 +176,18 @@ export function createGameCoordinator({
       walkDistance: 0,
     },
     zombies: zombies.map((zombie) => zombie.getState()),
-    containers: seedContainers(containerStock),
-    droppedItems: [],
-    occupiedHouseId: getHouseAt(position),
-    activeTimeMs: 0,
+    containers: snapshot?.containers ?? seedContainers(containerStock),
+    droppedItems: snapshot?.droppedItems ?? [],
+    occupiedHouseId: getHouseAt(position, snapshot?.occupiedHouseId),
+    activeTimeMs: snapshot?.activeTimeMs ?? 0,
     gameOver: null,
   };
   let direction: WorldPoint = { x: 0, y: 0 };
   let shiftHeld = false;
   let sprintRequested = false;
+  let pointerTarget: WorldPoint | null = null;
   let openContainer: MapObject | null = null;
+  let wasPaused = false;
   const listeners = new Set<() => void>();
 
   function notify() {
@@ -181,7 +203,13 @@ export function createGameCoordinator({
   const pause = createGamePause(() => {
     const { isPaused, foregroundPanel } = pause.getPauseState();
     if (foregroundPanel !== 'loot') openContainer = null;
-    if (isPaused) clearMovement();
+    if (isPaused) {
+      clearMovement();
+      pointerTarget = null;
+    } else if (wasPaused) {
+      for (const zombie of zombies) zombie.rebuildNavigation(state.activeTimeMs);
+    }
+    wasPaused = isPaused;
     notify();
   });
 
@@ -276,13 +304,19 @@ export function createGameCoordinator({
 
   function advanceSimulation({ elapsedMs: deltaMs, needDamage, hunger, thirst }: ReturnType<typeof getSurvivalStep>) {
     const previous = state.survivor;
+    const livingBodies = state.zombies.filter(({ health }) => health > 0);
+    const canStep = (from: WorldPoint, to: WorldPoint) => canOccupy(to) && livingBodies.every(({ position }) => {
+      const separation = Math.hypot(to.x - position.x, to.y - position.y);
+      // Permit separation if a saved or approaching body already overlaps the survivor.
+      return separation >= 2 * actorRadius || separation > Math.hypot(from.x - position.x, from.y - position.y);
+    });
     const { walkSpeed, sprintSpeed, sprintDrainPerMs, staminaRecoveryPerMs } = movementConfig;
     const timeToExhaustion = previous.stamina / sprintDrainPerMs;
     const sprintMs = sprintRequested && !previous.attack ? Math.min(deltaMs, timeToExhaustion) : 0;
-    const sprintPosition = travel(previous.position, direction, sprintSpeed * sprintMs / 1000);
+    const sprintPosition = travel(previous.position, direction, sprintSpeed * sprintMs / 1000, canStep);
     const sprinting = sprintPosition !== previous.position;
     const stepSpeed = previous.attack ? batConfig.stepSpeed : walkSpeed;
-    const nextPosition = travel(sprintPosition, direction, stepSpeed * (deltaMs - sprintMs) / 1000);
+    const nextPosition = travel(sprintPosition, direction, stepSpeed * (deltaMs - sprintMs) / 1000, canStep);
 
     const exhausted = sprinting && sprintMs >= timeToExhaustion;
     const stamina = sprinting
@@ -291,7 +325,9 @@ export function createGameCoordinator({
     if (exhausted) sprintRequested = false;
 
     const traveled = Math.hypot(nextPosition.x - previous.position.x, nextPosition.y - previous.position.y);
-    const facing = previous.attack?.direction ?? aimFrom(previous.position, nextPosition) ?? previous.facing;
+    const facing = previous.attack?.direction ?? (pointerTarget
+      ? aimFrom(nextPosition, pointerTarget)
+      : aimFrom(previous.position, nextPosition)) ?? previous.facing;
     const activeTimeMs = state.activeTimeMs + deltaMs;
     const approached = zombies.map((zombie) => zombie.step(nextPosition, deltaMs, activeTimeMs));
     let attack = advanceAttack(previous.attack, deltaMs, batConfig);
@@ -349,6 +385,7 @@ export function createGameCoordinator({
       advanceSimulation(survivalStep);
       remaining -= survivalStep.elapsedMs;
     }
+    pointerTarget = null;
     notify();
     return state;
   }
@@ -380,13 +417,20 @@ export function createGameCoordinator({
       if (sprintHeld && !shiftHeld) sprintRequested = state.survivor.stamina >= movementConfig.minimumSprintStamina;
       shiftHeld = sprintHeld;
     },
+    aimAt(target) {
+      if (pause.getPauseState().isPaused || state.gameOver || state.survivor.attack) return;
+      if (target && (!Number.isFinite(target.x) || !Number.isFinite(target.y))) return;
+      pointerTarget = target;
+    },
     step,
     startBatSwing(target) {
       const { survivor } = state;
       if (pause.getPauseState().isPaused || !survivor.equippedWeaponId || survivor.attack || state.gameOver
           || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return false;
 
-      const facing = aimFrom(survivor.position, target) ?? survivor.facing;
+      const facing = aimFrom(survivor.position, target)
+        ?? (pointerTarget && aimFrom(survivor.position, pointerTarget)) ?? survivor.facing;
+      pointerTarget = null;
       state = {
         ...state,
         survivor: {

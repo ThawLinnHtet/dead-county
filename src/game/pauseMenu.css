@@ -1,10 +1,4 @@
 .pause-menu {
-  --dc-surface: #1b1e1d;
-  --dc-border: #49544a;
-  --dc-text-primary: #eee6d6;
-  --dc-danger: #b14a3a;
-  --dc-focus: #d6ae6d;
-  --dc-scrim: rgb(0 0 0 / 70%);
   position: fixed;
   inset: 0;
   width: min(21rem, calc(100vw - 2rem));
@@ -14,8 +8,8 @@
   border: 0;
   overflow: auto;
   background: transparent;
-  color: var(--dc-text-primary);
-  font-family: var(--dc-font-body, Inter, system-ui, sans-serif);
+  color: var(--dc-text);
+  font-family: var(--dc-font-body);
 }
 
 .pause-menu::backdrop {
@@ -28,7 +22,7 @@
   padding: .05em 0 .15em;
   text-align: center;
   text-shadow: 1px 2px #221b16;
-  font: 400 clamp(1.65rem, 8vw, 3.25rem)/1 var(--dc-font-display, 'Bebas Neue', Impact, sans-serif);
+  font: 400 clamp(1.65rem, 8vw, 3.25rem)/1 var(--dc-font-display);
   letter-spacing: .035em;
   white-space: nowrap;
   text-transform: uppercase;
@@ -53,7 +47,7 @@
   border: 1px solid transparent;
   background: transparent;
   color: inherit;
-  font: 600 1rem/1.25 var(--dc-font-body, Inter, system-ui, sans-serif);
+  font: 600 1rem/1.25 var(--dc-font-body);
   text-align: left;
   cursor: pointer;
 }
@@ -123,6 +117,16 @@
   text-align: center;
 }
 
+.pause-menu__recovery {
+  display: grid;
+  gap: .65rem;
+  margin-top: .65rem;
+}
+
+.pause-menu__recovery .pause-menu__action {
+  justify-content: center;
+}
+
 .survival-clock {
   position: absolute;
   z-index: 2;
@@ -131,9 +135,9 @@
   display: grid;
   gap: .15rem;
   padding: .55rem .75rem;
-  border: 1px solid #49544a;
+  border: 1px solid var(--dc-border);
   background: rgb(12 15 16 / 85%);
-  color: #eee6d6;
+  color: var(--dc-text);
   font-size: .75rem;
   text-align: center;
 }

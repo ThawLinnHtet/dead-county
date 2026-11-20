@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { version } from '../../package.json';
 import type { SurvivorId } from '../game/gameCoordinator';
+import { OverwriteConfirmation } from './OverwriteConfirmation';
 import './run-menus.css';
 
 const survivors = [
@@ -34,22 +35,44 @@ function Wordmark({ main = false }: { main?: boolean }) {
   );
 }
 
-export function RunMenus({ initialScreen = 'main', onStartRun }: {
-  initialScreen?: 'main' | 'survivors';
+export function RunMenus({
+  initialScreen, canStart, canContinue, statusMessage, errorMessage, pending, replacementOpen,
+  onStartRun, onContinue, onConfirmReplacement, onCancelReplacement, onNavigate,
+  canRetryRead, canReplaceDamaged, damagedStage, onRetryRead, onReplaceDamaged, onDecideDamaged,
+}: {
+  initialScreen: 'main' | 'survivors';
+  canStart: boolean;
+  canContinue: boolean;
+  statusMessage: string;
+  errorMessage: string | null;
+  pending: boolean;
+  replacementOpen: boolean;
   onStartRun: (characterId: SurvivorId) => void;
+  onContinue: () => void;
+  onConfirmReplacement: () => void;
+  onCancelReplacement: () => void;
+  onNavigate: () => void;
+  canRetryRead: boolean;
+  canReplaceDamaged: boolean;
+  damagedStage: 'confirm' | 'choose' | null;
+  onRetryRead: () => void;
+  onReplaceDamaged: () => void;
+  onDecideDamaged: (confirm: boolean) => void;
 }) {
-  const [screen, setScreen] = useState<MenuScreen>(initialScreen);
+  const [menuScreen, setScreen] = useState<MenuScreen>(initialScreen);
+  const screen = damagedStage === 'choose' ? 'survivors' : menuScreen;
   const [selected, setSelected] = useState<SurvivorId | null>(null);
-  const [startError, setStartError] = useState(false);
   const newGame = useRef<HTMLButtonElement>(null);
   const showControls = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
+  const startButton = useRef<HTMLButtonElement>(null);
+  const recoveryButton = useRef<HTMLButtonElement>(null);
   const opener = useRef<Exclude<MenuScreen, 'main'> | null>(initialScreen === 'survivors' ? 'survivors' : null);
 
   function open(next: Exclude<MenuScreen, 'main'>) {
     opener.current = next;
     setSelected(null);
-    setStartError(false);
+    onNavigate();
     setScreen(next);
   }
 
@@ -61,37 +84,72 @@ export function RunMenus({ initialScreen = 'main', onStartRun }: {
     }
 
     heading.current?.focus();
-    function backOnEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') setScreen('main');
-    }
-    window.addEventListener('keydown', backOnEscape);
-    return () => window.removeEventListener('keydown', backOnEscape);
   }, [screen]);
 
-  function startRun() {
-    if (!selected) return;
-    setStartError(false);
-    try {
-      onStartRun(selected);
-    } catch {
-      setStartError(true);
+  useEffect(() => {
+    if (!pending && !damagedStage && (canRetryRead || (screen === 'main' && canReplaceDamaged))) {
+      recoveryButton.current?.focus();
     }
+  }, [pending, damagedStage, canRetryRead, canReplaceDamaged, screen]);
+
+  function backToMenu() {
+    if (damagedStage === 'choose') {
+      onDecideDamaged(false);
+      return;
+    }
+    onNavigate();
+    setScreen('main');
+  }
+
+  function startRun() {
+    if (selected && canStart && !pending) onStartRun(selected);
   }
 
   return (
-    <main className={screen === 'main' ? 'run-menu run-menu--main' : 'run-menu run-menu--detail'}>
+    <main
+      className={screen === 'main' ? 'run-menu run-menu--main' : 'run-menu run-menu--detail'}
+      onKeyDown={(event) => {
+        if (event.key === 'Escape' && screen !== 'main' && !pending && !replacementOpen) backToMenu();
+      }}
+    >
       <Wordmark main={screen === 'main'} />
       {screen === 'main' && (
         <>
           <nav className="run-menu-nav" aria-label="Main Menu">
-            <button className="menu-button menu-button--olive" ref={newGame} onClick={() => open('survivors')}>New Game</button>
+            <button className="menu-button menu-button--olive" ref={newGame} disabled={pending || !canStart} onClick={() => open('survivors')}>New Game</button>
             <div>
-              <button className="menu-button" disabled aria-describedby="continue-status">Continue</button>
-              <p id="continue-status" className="menu-help">No run available to continue</p>
+              <button
+                className="menu-button"
+                disabled={pending || !canContinue}
+                aria-describedby="continue-status"
+                onClick={onContinue}
+              >Continue</button>
+              <p id="continue-status" className="menu-help" role="status">{pending ? 'Opening the local save…' : statusMessage}</p>
+              {(canRetryRead || canReplaceDamaged) && (
+                <button
+                  className="menu-button"
+                  type="button"
+                  ref={recoveryButton}
+                  disabled={pending}
+                  onClick={canRetryRead ? onRetryRead : onReplaceDamaged}
+                >
+                  {canRetryRead ? 'Try reading again' : 'Replace damaged save'}
+                </button>
+              )}
+              {errorMessage && <p className="menu-error" role="alert">{errorMessage}</p>}
             </div>
-            <button className="menu-button" ref={showControls} onClick={() => open('controls')}>Controls</button>
+            <button className="menu-button" ref={showControls} disabled={pending} onClick={() => open('controls')}>Controls</button>
           </nav>
           <p className="menu-version">v{version}</p>
+          {damagedStage === 'confirm' && (
+            <OverwriteConfirmation
+              damaged
+              pending={pending}
+              opener={recoveryButton}
+              onCancel={() => onDecideDamaged(false)}
+              onConfirm={() => { setSelected(null); onDecideDamaged(true); }}
+            />
+          )}
         </>
       )}
       {screen === 'survivors' && (
@@ -105,6 +163,7 @@ export function RunMenus({ initialScreen = 'main', onStartRun }: {
                 className="survivor-card"
                 key={id}
                 aria-pressed={selected === id}
+                disabled={pending}
                 onClick={() => setSelected(id)}
               >
                 {selected === id && <span className="survivor-check" aria-hidden="true" />}
@@ -114,10 +173,30 @@ export function RunMenus({ initialScreen = 'main', onStartRun }: {
             ))}
           </div>
           <div className="survivor-actions">
-            <button className="menu-button" onClick={() => setScreen('main')}>Back</button>
-            <button className="menu-button menu-button--rust" disabled={!selected} onClick={startRun}>Start Run</button>
+            <button className="menu-button" disabled={pending} onClick={backToMenu}>Back</button>
+            <button
+              className="menu-button menu-button--rust"
+              ref={startButton}
+              disabled={!selected || !canStart || (pending && !replacementOpen)}
+              onClick={startRun}
+            >Start Run</button>
           </div>
-          {startError && <p className="menu-error" role="alert">Couldn’t start the run. Try again.</p>}
+          {!replacementOpen && pending && <p className="menu-help" role="status">Starting the run…</p>}
+          {!replacementOpen && !pending && !canStart && <p className="menu-help" role="status">{statusMessage}</p>}
+          {canRetryRead && (
+            <button className="menu-button" type="button" ref={recoveryButton} disabled={pending} onClick={onRetryRead}>
+              Try reading again
+            </button>
+          )}
+          {errorMessage && <p className="menu-error" role="alert">{errorMessage}</p>}
+          {replacementOpen && (
+            <OverwriteConfirmation
+              pending={pending}
+              onCancel={onCancelReplacement}
+              onConfirm={onConfirmReplacement}
+              opener={startButton}
+            />
+          )}
         </section>
       )}
       {screen === 'controls' && (
@@ -131,7 +210,7 @@ export function RunMenus({ initialScreen = 'main', onStartRun }: {
               </div>
             ))}
           </dl>
-          <button className="menu-button" onClick={() => setScreen('main')}>Back</button>
+          <button className="menu-button" onClick={backToMenu}>Back</button>
         </section>
       )}
     </main>

@@ -20,6 +20,44 @@ function equipBat(game: GameCoordinator) {
   game.closeInventoryPanel();
 }
 
+test('a living zombie physically blocks the survivor during its bite wind-up', () => {
+  const position = { x: 12.5, y: 9.15 };
+  const game = createGameCoordinator({ position: survivorPosition, zombieSpawns: [spawn('blocking-zombie', position)] });
+  game.step(1);
+  assert.equal(game.getState().zombies[0]!.attack?.phase, 'windup');
+  game.setMovement({ x: 2, y: 1 });
+  for (let tick = 0; tick < 25; tick += 1) game.step(16);
+  assert.equal(game.getState().survivor.health, 100);
+  assert.ok(game.getState().survivor.position.x <= position.x - .46);
+});
+
+test('world pointer movement aims without attacking and cannot redirect a committed swing', () => {
+  const game = createGameCoordinator({ position: survivorPosition, zombieSpawns: [] });
+  const left = { x: 10.9, y: 9.15 };
+  const right = { x: 12.9, y: 9.15 };
+  game.aimAt(left);
+  const idle = game.step(16).survivor;
+  assert.deepEqual(idle.facing, { x: -1, y: 0 });
+  assert.equal(idle.facingLeft, true);
+  assert.equal(idle.attack, null);
+  game.aimAt(survivorPosition);
+  assert.deepEqual(game.step(16).survivor.facing, idle.facing);
+
+  equipBat(game);
+  assert.equal(game.startBatSwing(right), true);
+  game.aimAt(left);
+  assert.deepEqual(game.step(800).survivor.facing, { x: 1, y: 0 });
+  game.step(16);
+  assert.deepEqual(game.getState().survivor.facing, { x: 1, y: 0 });
+  game.aimAt(left);
+  game.toggleInventory();
+  game.aimAt(left);
+  game.closeInventoryPanel();
+  assert.deepEqual(game.step(16).survivor.facing, { x: 1, y: 0 });
+  game.aimAt(left);
+  assert.deepEqual(game.step(16).survivor.facing, idle.facing);
+});
+
 test('the bat commits world aim and damages only the ordinal winner among equal targets', () => {
   const target = { x: 12.7, y: 9.15 };
   const zombies = [spawn('a-zombie', target), spawn('Z-zombie', target)];

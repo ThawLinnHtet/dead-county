@@ -1,8 +1,44 @@
 @import "tailwindcss";
 
-@theme {
-  --color-background: #0c0f10;
-  --color-foreground: #eee6d6;
+@font-face {
+  font-family: "Bebas Neue";
+  src: url("/assets/ui/bebas-neue.woff2") format("woff2");
+  font-display: swap;
+}
+
+@font-face {
+  font-family: Inter;
+  src: url("/assets/ui/inter.woff2") format("woff2");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
+:root {
+  --dc-bg: #0c0f10;
+  --dc-surface: #1b1e1d;
+  --dc-surface-elevated: #343a33;
+  --dc-text: #eee6d6;
+  --dc-text-muted: #a8a8ae;
+  --dc-border: #49544a;
+  --dc-warning: #d6ae6d;
+  --dc-focus: var(--dc-warning);
+  --dc-accent: #686a3f;
+  --dc-accent-hover: #77794a;
+  --dc-accent-pressed: #525432;
+  --dc-danger: #b14a3a;
+  --dc-danger-filled: #963c33;
+  --dc-health: var(--dc-danger);
+  --dc-stamina: #4b8058;
+  --dc-hunger: #b37a3c;
+  --dc-thirst: #3b7fa6;
+  --dc-scrim: rgb(0 0 0 / 70%);
+  --dc-font-display: "Bebas Neue", Impact, "Arial Narrow", sans-serif;
+  --dc-font-body: Inter, system-ui, sans-serif;
+}
+
+@theme inline {
+  --color-background: var(--dc-bg);
+  --color-foreground: var(--dc-text);
 }
 
 body {
@@ -13,6 +49,7 @@ body {
 }
 
 .game-screen {
+  --game-hud-bottom: clamp(1rem, 3vw, 2.25rem);
   position: relative;
   display: grid;
   min-height: 100svh;
@@ -44,10 +81,10 @@ body {
 .movement-hint {
   position: absolute;
   z-index: 2;
-  left: clamp(1rem, 3vw, 2.5rem);
 }
 
 .game-location {
+  left: clamp(1rem, 3vw, 2.5rem);
   top: clamp(1rem, 3vw, 2.5rem);
 }
 
@@ -55,10 +92,10 @@ body {
   width: fit-content;
   margin: .35rem 0 0;
   padding: .25rem .5rem;
-  border: 1px solid #49544a;
+  border: 1px solid var(--dc-border);
   border-radius: 3px;
   background: rgb(18 20 18 / 94%);
-  color: #d6ae6d;
+  color: var(--dc-warning);
   font-size: .65rem;
   font-weight: 700;
   letter-spacing: .11em;
@@ -66,18 +103,21 @@ body {
 }
 
 .movement-hint {
-  bottom: clamp(1rem, 3vw, 2.25rem);
-  display: flex;
+  right: clamp(1rem, 3vw, 2.5rem);
+  bottom: var(--game-hud-bottom);
+  display: grid;
+  grid-template-columns: auto auto;
   align-items: center;
-  gap: .65rem;
+  gap: .3rem .65rem;
   padding: .5rem .7rem;
-  border: 1px solid #49544a;
+  border: 1px solid var(--dc-border);
   background: rgb(12 15 16 / 85%);
   font-size: .78rem;
 }
 
 .movement-keys {
   display: flex;
+  justify-self: end;
   gap: .2rem;
 }
 
@@ -89,7 +129,7 @@ body {
   border: 1px solid #66695a;
   border-radius: 3px;
   background: #242822;
-  color: #eee6d6;
+  color: var(--dc-text);
   font: 700 .74rem/1 "Arial", sans-serif;
 }
 
@@ -97,4 +137,18 @@ body {
   width: auto;
   padding-inline: .35rem;
   white-space: nowrap;
+}
+
+.item-icon {
+  display: block;
+  width: min(78%, 46px);
+  aspect-ratio: 1;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+@media (max-width: 53rem) {
+  .movement-hint {
+    bottom: calc(var(--game-hud-bottom) + clamp(5rem, 8vw, 6rem));
+  }
 }
