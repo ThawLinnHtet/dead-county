@@ -27,7 +27,8 @@ House B has gray siding, a columned porch, and Canned Food in its kitchen cabine
 | --- | --- |
 | `W`, `A`, `S`, `D` | Walk in screen-relative directions |
 | `Shift` + movement | Sprint while Stamina permits |
-| Mouse + left click | Aim and swing the equipped bat in the game world |
+| Mouse movement | Face toward the pointer over the game world |
+| Left click | Swing the equipped bat in the pointed direction |
 | `E` | Search the indicated container or pick up the indicated item |
 | `I` | Toggle Inventory |
 | `M` or click the minimap | Open the neighborhood map |

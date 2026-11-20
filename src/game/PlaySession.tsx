@@ -6,6 +6,7 @@ import { houseNames } from './drawNeighborhoodMap';
 import { GameViewport } from './GameViewport';
 import type { GameCoordinator, GameOverResult } from './gameCoordinator';
 import { InventoryPanel } from './InventoryPanel';
+import { InventoryPreview } from './InventoryPreview';
 import { FullMap, Minimap } from './NeighborhoodMap';
 import { PauseMenu } from './PauseMenu';
 import type { PauseSaveActions } from './PauseMenu';
@@ -101,6 +102,7 @@ export function PlaySession({
           </div>
           <Minimap coordinator={coordinator} />
         </div>
+        <InventoryPreview coordinator={coordinator} />
         <aside className="movement-hint" aria-label="Gameplay controls">
           <span className="movement-keys" aria-hidden="true">
             <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>

@@ -1,5 +1,8 @@
 import Phaser from 'phaser';
 import actorsUrl from './actors.png';
+import {
+  actorFrameHeight, actorFrameWidth, actorOrigin, createZombieWalkTexture, zombieLooks, zombieWalkFrame, zombieWalkKey,
+} from './actorMotion';
 import { batConfig, damageCueMs } from './combat';
 import { createCombatAudio } from './combatAudio';
 import { drawBat, drawBiteArms, drawDamageCue } from './combatArt';
@@ -13,14 +16,6 @@ import groundUrl from './maps/ground.png';
 import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, unproject } from './world';
 import zombieVariantsUrl from './zombie-variants.png';
 import { zombieConfig } from './zombie';
-import type { ZombieAppearanceId } from './zombie';
-
-const zombieVariantFrames: Record<Exclude<ZombieAppearanceId, 'zombie_civilian'>, number> = {
-  zombie_worker: 0,
-  zombie_hoodie: 1,
-  zombie_female: 2,
-  zombie_bloody: 3,
-};
 
 const outsideTerrainTiles = 7;
 const survivorDeathAnimationMs = 210;
@@ -37,6 +32,7 @@ export class HouseScene extends Phaser.Scene {
     shadow: Phaser.GameObjects.Ellipse;
     effects: Phaser.GameObjects.Graphics;
     lastHitAtMs: number | null;
+    idleOffset: number;
   }>();
   private survivor!: Phaser.GameObjects.Sprite;
   private shadow!: Phaser.GameObjects.Ellipse;
@@ -62,9 +58,9 @@ export class HouseScene extends Phaser.Scene {
       this.load.image(kind, '/assets/items/' + kind + '.png');
     }
     this.load.spritesheet('ground', groundUrl, { frameWidth: tileWidth, frameHeight: tileHeight });
-    this.load.spritesheet('actors', actorsUrl, { frameWidth: 40, frameHeight: 58 });
-    this.load.spritesheet('survivor-female', femaleSurvivorUrl, { frameWidth: 40, frameHeight: 58 });
-    this.load.spritesheet('zombie-variants', zombieVariantsUrl, { frameWidth: 40, frameHeight: 58 });
+    this.load.spritesheet('actors', actorsUrl, { frameWidth: actorFrameWidth, frameHeight: actorFrameHeight });
+    this.load.spritesheet('survivor-female', femaleSurvivorUrl, { frameWidth: actorFrameWidth, frameHeight: actorFrameHeight });
+    this.load.spritesheet('zombie-variants', zombieVariantsUrl, { frameWidth: actorFrameWidth, frameHeight: actorFrameHeight });
   }
 
   create() {
@@ -87,7 +83,8 @@ export class HouseScene extends Phaser.Scene {
     this.survivorEffects = this.add.graphics();
     const initialState = this.coordinator.getState();
     const survivorTexture = initialState.survivor.characterId === 'survivor_female' ? 'survivor-female' : 'actors';
-    this.survivor = this.add.sprite(0, 0, survivorTexture, 0).setOrigin(.5, 56 / 58);
+    this.survivor = this.add.sprite(0, 0, survivorTexture, 0).setOrigin(.5, actorOrigin);
+    createZombieWalkTexture(this.textures);
     this.zombieArt.clear();
     this.drawZombies(initialState);
     this.drawSurvivor(initialState);
@@ -128,8 +125,12 @@ export class HouseScene extends Phaser.Scene {
     synchronizeWorld();
     const { canvas } = this.game;
     canvas.addEventListener('pointerdown', this.onWorldPress);
+    canvas.addEventListener('pointermove', this.onWorldMove);
+    canvas.addEventListener('pointerleave', this.onWorldLeave);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       canvas.removeEventListener('pointerdown', this.onWorldPress);
+      canvas.removeEventListener('pointermove', this.onWorldMove);
+      canvas.removeEventListener('pointerleave', this.onWorldLeave);
       this.combatAudio.dispose();
       unsubscribe();
       this.scale.off(Phaser.Scale.Events.RESIZE, resize);
@@ -168,16 +169,30 @@ export class HouseScene extends Phaser.Scene {
   }
 
   private onWorldPress = (event: PointerEvent) => {
-    if (this.coordinator.getState().gameOver || event.defaultPrevented || !event.isPrimary
-      || event.pointerType !== 'mouse' || event.button !== 0) return;
+    if (event.button !== 0 || !this.isWorldMouseEvent(event)) return;
+    if (this.coordinator.startBatSwing(this.getWorldPointer(event))) this.combatAudio.swing();
+  };
+
+  private onWorldMove = (event: PointerEvent) => {
+    if (this.isWorldMouseEvent(event)) this.coordinator.aimAt(this.getWorldPointer(event));
+  };
+
+  private onWorldLeave = () => this.coordinator.aimAt(null);
+
+  private isWorldMouseEvent(event: PointerEvent) {
+    return event.isPrimary && event.pointerType === 'mouse' && !event.defaultPrevented
+      && !this.coordinator.getPauseState().isPaused && !this.coordinator.getState().gameOver;
+  }
+
+  private getWorldPointer(event: PointerEvent) {
     const bounds = this.game.canvas.getBoundingClientRect();
     const size = this.scale.gameSize;
     const point = this.cameras.main.getWorldPoint(
       (event.clientX - bounds.left) * size.width / bounds.width,
       (event.clientY - bounds.top) * size.height / bounds.height,
     );
-    if (this.coordinator.startBatSwing(unproject(point))) this.combatAudio.swing();
-  };
+    return unproject(point);
+  }
 
   private drawInteractionPrompt() {
     const target = this.coordinator.getInteractionTarget();
@@ -215,9 +230,12 @@ export class HouseScene extends Phaser.Scene {
     const { x, y } = feet;
     const { attack } = survivor;
     const fallen = survivor.health === 0;
-    const frame = survivor.gait === 'idle' || attack ? 0 : 1 + Math.floor(survivor.walkDistance * 6.6) % 6;
+    const idle = !fallen && !attack && survivor.gait === 'idle';
+    const frame = fallen || idle || attack ? 0 : 1 + Math.floor(survivor.walkDistance * 6.6) % 6;
     const side = survivor.facingLeft ? -1 : 1;
-    let lean = survivor.gait === 'sprint' ? 8 * side : 0;
+    const breath = idle && !this.reduceMotion ? Math.sin(activeTimeMs / 420) : 0;
+    const height = 1 + breath * .022;
+    let lean = (survivor.gait === 'sprint' ? 8 : breath * 1.35) * side;
     if (fallen) lean = -side * Phaser.Math.Linear(28, 83, this.timeSinceSurvivorDeath / survivorDeathAnimationMs);
     else if (attack?.phase === 'windup') lean = -11 * side * (1 - attack.remainingMs / batConfig.windupMs);
     else if (attack?.phase === 'contact') lean = 16 * side;
@@ -225,14 +243,14 @@ export class HouseScene extends Phaser.Scene {
     const biteAge = survivor.lastBiteAtMs === null
       ? Infinity : activeTimeMs + this.timeSinceSurvivorDeath - survivor.lastBiteAtMs;
     const hurt = biteAge < damageCueMs;
-    this.survivor.setPosition(x, y).setDepth(y).setFlipX(survivor.facingLeft).setFrame(frame).setAngle(lean);
+    this.survivor.setPosition(x, y).setDepth(y).setFlipX(survivor.facingLeft).setFrame(frame).setAngle(lean).setScale(1, height);
     if (hurt) this.survivor.setTint(0xeaa18a);
     else if (fallen) this.survivor.setTint(0x9d8174);
     else this.survivor.clearTint();
     this.shadow.setPosition(x, y - 1).setDepth(y - .1);
     const art = this.survivorEffects.clear().setDepth(y + .03);
     if (!fallen && (survivor.equippedWeaponId || attack)) {
-      drawBat(art, feet, survivor.facingLeft, attack, lean);
+      drawBat(art, feet, survivor.facingLeft, attack, lean, height);
     }
     if (hurt) drawDamageCue(art, feet, biteAge, true, fallen);
   }
@@ -241,15 +259,14 @@ export class HouseScene extends Phaser.Scene {
     for (const zombie of zombies) {
       let art = this.zombieArt.get(zombie.id);
       if (!art) {
-        const appearance = zombie.appearanceId;
-        const sprite = appearance === 'zombie_civilian'
-          ? this.add.sprite(0, 0, 'actors', 7)
-          : this.add.sprite(0, 0, 'zombie-variants', zombieVariantFrames[appearance]);
+        const look = zombieLooks[zombie.appearanceId];
+        const sprite = this.add.sprite(0, 0, look.texture, look.frame);
         art = {
-          sprite: sprite.setOrigin(.5, 56 / 58),
+          sprite: sprite.setOrigin(.5, actorOrigin),
           shadow: this.add.ellipse(0, 0, 22, 8, 0x272721, .42),
           effects: this.add.graphics(),
           lastHitAtMs: zombie.lastBatHitAtMs,
+          idleOffset: this.zombieArt.size * 853,
         };
         this.zombieArt.set(zombie.id, art);
       }
@@ -262,12 +279,22 @@ export class HouseScene extends Phaser.Scene {
         ? Infinity : activeTimeMs - zombie.lastBatHitAtMs;
       const hurt = hitAge < damageCueMs;
       const side = zombie.facingLeft ? -1 : 1;
-      let lean = zombie.moving ? 4 * Math.sin(zombie.walkDistance * 11) : 0;
+      const walking = zombie.moving && !attack && !dead;
+      const idle = !walking && !attack && !dead && !this.reduceMotion;
+      const idleTime = activeTimeMs + art.idleOffset;
+      const sway = idle ? Math.sin(idleTime / 560) + .4 * Math.sin(idleTime / 242) : 0;
+      const height = idle ? 1 + .022 * Math.sin(idleTime / 390) : 1;
+      let lean = walking ? 1.5 * side : 2 * sway;
       if (dead) lean = -side * Phaser.Math.Linear(25, 85, Math.min(1, hitAge / 210));
       else if (attack?.phase === 'windup') lean = -side * (9 + 9 * (1 - attack.remainingMs / zombieConfig.bite.windupMs));
       else if (attack?.phase === 'contact') lean = 23 * side;
       else if (attack?.phase === 'recovery') lean = 23 * side * attack.remainingMs / zombieConfig.bite.recoveryMs;
-      art.sprite.setPosition(x, y).setDepth(y).setFlipX(zombie.facingLeft).setAngle(lean);
+      const look = zombieLooks[zombie.appearanceId];
+      const texture = walking ? zombieWalkKey : look.texture;
+      const frame = walking ? zombieWalkFrame(zombie.appearanceId, zombie.walkDistance) : look.frame;
+      if (art.sprite.texture.key !== texture) art.sprite.setTexture(texture, frame);
+      else art.sprite.setFrame(frame);
+      art.sprite.setPosition(x, y).setDepth(y).setFlipX(zombie.facingLeft).setAngle(lean).setScale(1, height);
       if (hurt) art.sprite.setTint(0xffcb9b);
       else if (dead) art.sprite.setTint(0x9d8174);
       else art.sprite.clearTint();

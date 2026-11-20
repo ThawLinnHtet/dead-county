@@ -1,28 +1,15 @@
-@font-face {
-  font-family: "Bebas Neue";
-  src: url("/assets/ui/bebas-neue.woff2") format("woff2");
-  font-display: swap;
-}
-
-@font-face {
-  font-family: Inter;
-  src: url("/assets/ui/inter.woff2") format("woff2");
-  font-weight: 400 700;
-  font-display: swap;
-}
-
 .run-menu {
-  --menu-bg: #0c0f10;
-  --menu-surface: #1b1e1d;
-  --menu-elevated: #343a33;
-  --menu-text: #eee6d6;
-  --menu-muted: #a8a8ae;
-  --menu-border: #49544a;
-  --menu-focus: #d6ae6d;
-  --menu-accent: #686a3f;
-  --menu-accent-hover: #77794a;
-  --menu-accent-pressed: #525432;
-  --menu-rust: #b14a3a;
+  --menu-bg: var(--dc-bg);
+  --menu-surface: var(--dc-surface);
+  --menu-elevated: var(--dc-surface-elevated);
+  --menu-text: var(--dc-text);
+  --menu-muted: var(--dc-text-muted);
+  --menu-border: var(--dc-border);
+  --menu-focus: var(--dc-focus);
+  --menu-accent: var(--dc-accent);
+  --menu-accent-hover: var(--dc-accent-hover);
+  --menu-accent-pressed: var(--dc-accent-pressed);
+  --menu-rust: var(--dc-danger);
   --menu-display: "Bebas Neue", "Bahnschrift Condensed", "Arial Narrow", sans-serif;
   --menu-edge: clamp(2rem, 5.4vw, 7rem);
 
@@ -69,7 +56,7 @@
 
 .menu-wordmark span {
   display: inline-block;
-  background: linear-gradient(170deg, #eee6d6 32%, #e4d3ba 68%, #ba9d83 100%);
+  background: linear-gradient(170deg, var(--dc-text) 32%, #e4d3ba 68%, #ba9d83 100%);
   color: transparent;
   background-clip: text;
   -webkit-text-stroke-color: rgb(238 230 214 / 60%);

@@ -54,6 +54,7 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   getState(): GameState;
   subscribe(listener: () => void): () => void;
   setMovement(screenDirection: WorldPoint, sprintHeld?: boolean): void;
+  aimAt(target: WorldPoint | null): void;
   step(deltaMs: number): GameState;
   startBatSwing(target: WorldPoint): boolean;
   getInteractionTarget(): InteractionTarget | null;
@@ -184,6 +185,7 @@ function makeGameCoordinator({
   let direction: WorldPoint = { x: 0, y: 0 };
   let shiftHeld = false;
   let sprintRequested = false;
+  let pointerTarget: WorldPoint | null = null;
   let openContainer: MapObject | null = null;
   let wasPaused = false;
   const listeners = new Set<() => void>();
@@ -201,8 +203,10 @@ function makeGameCoordinator({
   const pause = createGamePause(() => {
     const { isPaused, foregroundPanel } = pause.getPauseState();
     if (foregroundPanel !== 'loot') openContainer = null;
-    if (isPaused) clearMovement();
-    else if (wasPaused) {
+    if (isPaused) {
+      clearMovement();
+      pointerTarget = null;
+    } else if (wasPaused) {
       for (const zombie of zombies) zombie.rebuildNavigation(state.activeTimeMs);
     }
     wasPaused = isPaused;
@@ -321,7 +325,9 @@ function makeGameCoordinator({
     if (exhausted) sprintRequested = false;
 
     const traveled = Math.hypot(nextPosition.x - previous.position.x, nextPosition.y - previous.position.y);
-    const facing = previous.attack?.direction ?? aimFrom(previous.position, nextPosition) ?? previous.facing;
+    const facing = previous.attack?.direction ?? (pointerTarget
+      ? aimFrom(nextPosition, pointerTarget)
+      : aimFrom(previous.position, nextPosition)) ?? previous.facing;
     const activeTimeMs = state.activeTimeMs + deltaMs;
     const approached = zombies.map((zombie) => zombie.step(nextPosition, deltaMs, activeTimeMs));
     let attack = advanceAttack(previous.attack, deltaMs, batConfig);
@@ -379,6 +385,7 @@ function makeGameCoordinator({
       advanceSimulation(survivalStep);
       remaining -= survivalStep.elapsedMs;
     }
+    pointerTarget = null;
     notify();
     return state;
   }
@@ -410,13 +417,20 @@ function makeGameCoordinator({
       if (sprintHeld && !shiftHeld) sprintRequested = state.survivor.stamina >= movementConfig.minimumSprintStamina;
       shiftHeld = sprintHeld;
     },
+    aimAt(target) {
+      if (pause.getPauseState().isPaused || state.gameOver || state.survivor.attack) return;
+      if (target && (!Number.isFinite(target.x) || !Number.isFinite(target.y))) return;
+      pointerTarget = target;
+    },
     step,
     startBatSwing(target) {
       const { survivor } = state;
       if (pause.getPauseState().isPaused || !survivor.equippedWeaponId || survivor.attack || state.gameOver
           || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return false;
 
-      const facing = aimFrom(survivor.position, target) ?? survivor.facing;
+      const facing = aimFrom(survivor.position, target)
+        ?? (pointerTarget && aimFrom(survivor.position, pointerTarget)) ?? survivor.facing;
+      pointerTarget = null;
       state = {
         ...state,
         survivor: {
