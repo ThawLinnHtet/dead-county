@@ -31,16 +31,53 @@ export function drawScenery(scene: Phaser.Scene) {
   for (const x of [17.99, 22.98]) {
     stroke(ground, 0x8b877a, [at(x, 0), at(x, 17)], 2, .42);
   }
+  for (let x = 18.15; x < 22.9; x += .55) {
+    floor(ground, { x, y: 18.12, width: .28, height: .72 }, 0xb4ac92, 0, .52);
+  }
+  for (let x = 25.4; x < mapWidth - .7; x += 1.55) {
+    floor(ground, { x, y: 19.42, width: .6, height: .083 }, 0xb29455, 0, .54);
+  }
   for (const object of outdoorProps) {
     const art = scene.add.graphics().setDepth(nearDepth(object));
     if (object.type === 'tree') tree(art, ground, object);
     if (object.type === 'car') car(art, ground, object);
     if (object.type === 'fence') fence(art, object);
+    if (object.type === 'privacy_fence') privacyFence(art, object);
+    if (object.type === 'porch_rail') porchRail(art, object);
     if (object.type === 'post') box(art, object, 33, [0xac9a79, 0x776a54, 0x9a896c]);
     if (object.type === 'mailbox') {
       box(art, inset(object, .067), 18, [0x9e8d6d, 0x5b5142, 0x897660]);
       box(art, inset(object, -.075), 8, [0x9e9a88, 0x65665b, 0x817e6e], 16);
     }
+  }
+}
+
+function privacyFence(art: Art, rect: MapObject) {
+  const alongX = rect.width > rect.height;
+  const length = alongX ? rect.width : rect.height;
+  const plank = (offset: number, span: number) => ({
+    x: rect.x + (alongX ? offset : 0),
+    y: rect.y + (alongX ? 0 : offset),
+    width: alongX ? span : rect.width,
+    height: alongX ? rect.height : span,
+  });
+  box(art, rect, 42, [0x9d9176, 0x615b4d, 0x77705d]);
+  for (let offset = 0; offset < length - .02; offset += .16) {
+    const light = noise(Math.round(offset * 271)) > .52;
+    box(art, plank(offset, Math.min(.145, length - offset)), light ? 46 : 44,
+      [0xa2967c, 0x6c6656, light ? 0x8b8069 : 0x7e7562]);
+  }
+  for (let offset = 0; offset < length; offset += 1.68) {
+    box(art, inset(plank(offset, .18), -.025), 49, [0xa69b81, 0x625f51, 0x8f8772]);
+  }
+}
+
+function porchRail(art: Art, rect: MapObject) {
+  const color = [0xbab6a5, 0x868279, 0xa29d8f] as const;
+  box(art, rect, 3, color, 7);
+  box(art, inset(rect, -.025), 3, color, 20);
+  for (let offset = .035; offset < rect.width - .02; offset += .19) {
+    box(art, { ...rect, x: rect.x + offset, width: Math.min(.055, rect.width - offset) }, 13, color, 8);
   }
 }
 

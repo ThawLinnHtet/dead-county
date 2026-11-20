@@ -19,6 +19,8 @@ export type ContainerContents = Readonly<Record<string, readonly ItemInstance[]>
 
 export const authoredStock: ContainerStock = {
   starter_container: ['baseball_bat', 'water_bottle'],
+  house_b_kitchen_cabinet: ['canned_food'],
+  house_b_living_cabinet: ['water_bottle', 'bandage'],
 };
 
 const containerTypes = new Set(['cabinet', 'drawer', 'supply_box']);

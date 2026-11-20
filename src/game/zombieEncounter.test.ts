@@ -95,8 +95,8 @@ test('concealed movement leaves the last known position fixed until the first fr
 
 test('pursuit grace counts active time and expiry abandons the target in place', () => {
   const game = createGameCoordinator({
-    position: { x: 26, y: 8 },
-    zombieSpawns: [{ id: 'street_zombie', position: { x: 26, y: 2 }, destination: { x: 26, y: 3 } }],
+    position: { x: 34, y: 8 },
+    zombieSpawns: [{ id: 'street_zombie', position: { x: 34, y: 2 }, destination: { x: 34, y: 3 } }],
   });
   assert.equal(game.step(20).zombies[0]?.behavior.kind, 'chase');
   game.setMovement({ x: -2, y: 1 }, true);
@@ -155,7 +155,7 @@ test('a pursuer gains on walking but sprinting spends Stamina and opens a gap du
 });
 
 test('sprint exhaustion requires a new Shift press even after Stamina recovers', () => {
-  const game = createGameCoordinator({ position: { x: 26, y: 1 }, zombieSpawns: [] });
+  const game = createGameCoordinator({ position: { x: 34, y: 1 }, zombieSpawns: [] });
   const direction = { x: -2, y: 1 };
   game.setMovement(direction, true);
 

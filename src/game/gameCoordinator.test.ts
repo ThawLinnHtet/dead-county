@@ -13,7 +13,7 @@ test('a new run starts on unobstructed floor inside House A', () => {
 });
 
 test('WASD follows the screen while cardinal and diagonal travel share a logical speed', () => {
-  const start = { x: 17, y: 11 };
+  const start = { x: 19, y: 10 };
   const origin = project(start);
   const directions = [
     { x: 0, y: -1 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 1, y: 0 },
@@ -63,20 +63,20 @@ test('the same open doorway connects House A to the street and back', () => {
   const start = game.getState().survivor.position;
   game.setMovement({ x: 1, y: 1 });
 
-  for (let ticks = 0; ticks < 34; ticks += 1) game.step(100);
+  for (let ticks = 0; ticks < 22; ticks += 1) game.step(100);
   const outside = game.getState();
 
   assert.equal(outside.occupiedHouseId, null);
-  assert.ok(outside.survivor.position.x > 18);
-  assert.equal(outside.activeTimeMs, 3400);
+  assert.ok(outside.survivor.position.x > 15);
+  assert.equal(outside.activeTimeMs, 2200);
 
   game.setMovement({ x: -1, y: -1 });
-  for (let ticks = 0; ticks < 34; ticks += 1) game.step(100);
+  for (let ticks = 0; ticks < 22; ticks += 1) game.step(100);
   const inside = game.getState();
 
   assert.equal(inside.occupiedHouseId, 'house_a');
   assert.ok(Math.hypot(inside.survivor.position.x - start.x, inside.survivor.position.y - start.y) < .0001);
-  assert.equal(inside.activeTimeMs, 6800);
+  assert.equal(inside.activeTimeMs, 4400);
 });
 
 test('occupancy stays stable while the survivor shuffles across the threshold', () => {

@@ -5,6 +5,11 @@ import { InventoryPanel } from './InventoryPanel';
 import { PauseMenu } from './PauseMenu';
 import type { PauseSaveActions } from './PauseMenu';
 
+const locationNames: Readonly<Record<string, string>> = {
+  house_a: 'House A',
+  house_b: 'House B',
+};
+
 export function PlaySession({
   coordinator,
   pauseSaveActions,
@@ -61,7 +66,7 @@ export function PlaySession({
         <GameViewport coordinator={coordinator} />
         <header className="game-location">
           <h1>Dead County</h1>
-          <p role="status">{occupiedHouseId === 'house_a' ? 'House A' : 'Neighborhood'}</p>
+          <p role="status">{locationNames[occupiedHouseId ?? ''] ?? 'Neighborhood'}</p>
           <div className="combat-health">
             <label htmlFor="survivor-health">Health</label>
             <meter id="survivor-health" min={0} max={100} value={health} />
