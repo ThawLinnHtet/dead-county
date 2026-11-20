@@ -3,10 +3,11 @@ import type { AttackState } from './combat.ts';
 import { canOccupy, contains, houses, survivorSpawn, unproject } from './world.ts';
 import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
-import { authoredStock, findDropPosition, reachableContainers, reachableDrops, seedContainers } from './items.ts';
-import type { ContainerContents, ContainerStock, DroppedItem, ItemInstance } from './items.ts';
+import { authoredStock, findDropPosition, itemDefinitions, reachableContainers, reachableDrops, seedContainers } from './items.ts';
+import type { ConsumableStat, ContainerContents, ContainerStock, DroppedItem, ItemInstance } from './items.ts';
 import { createZombies } from './zombie.ts';
 import type { ZombieSpawn, ZombieState } from './zombie.ts';
+import { getSurvivalStep } from './survival.ts';
 
 export type SurvivorId = 'survivor_male' | 'survivor_female';
 
@@ -49,6 +50,8 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   toggleInventory(): void;
   closeInventoryPanel(): void;
   toggleEquip(slot: number, itemId: string): boolean;
+  getItemUse(slot: number, itemId: string): ItemUse;
+  useItem(slot: number, itemId: string): UseResult;
   dropItem(slot: number, itemId: string): DropResult;
 }
 
@@ -60,6 +63,10 @@ type InteractionResult =
   | { status: 'searched' }
   | { status: 'picked_up'; slot: number }
   | { status: 'inventory_full' | 'unavailable' };
+
+type UseRejection = { status: 'no_benefit'; reason: string } | { status: 'unavailable' };
+type ItemUse = { status: 'eligible'; stat: ConsumableStat; value: number } | UseRejection;
+type UseResult = { status: 'used'; stat: ConsumableStat; value: number } | UseRejection;
 
 type DropResult = { status: 'dropped' | 'cannot_drop' | 'swing_in_progress' | 'unavailable' };
 
@@ -240,7 +247,19 @@ export function createGameCoordinator({
       && (foregroundPanel === 'inventory' || (foregroundPanel === 'loot' && openContainer !== null));
   }
 
-  function advanceSimulation(deltaMs: number) {
+  function getItemUse(slot: number, itemId: string): ItemUse {
+    const { survivor } = state;
+    const item = survivor.inventory[slot];
+    if (!isInventoryAvailable() || !item || item.id !== itemId || item.kind === 'baseball_bat') {
+      return { status: 'unavailable' };
+    }
+    const { stat, change, noBenefit } = itemDefinitions[item.kind].use;
+    const value = Math.min(100, Math.max(0, survivor[stat] + change));
+    if (value === survivor[stat]) return { status: 'no_benefit', reason: noBenefit };
+    return { status: 'eligible', stat, value };
+  }
+
+  function advanceSimulation({ elapsedMs: deltaMs, needDamage, hunger, thirst }: ReturnType<typeof getSurvivalStep>) {
     const previous = state.survivor;
     const { walkSpeed, sprintSpeed, sprintDrainPerMs, staminaRecoveryPerMs } = movementConfig;
     const timeToExhaustion = previous.stamina / sprintDrainPerMs;
@@ -272,7 +291,7 @@ export function createGameCoordinator({
       if (state.zombies[index]!.attack?.phase !== 'windup' || approached[index]!.attack?.phase !== 'contact') return total;
       return total + zombie.resolveBite(nextPosition);
     }, 0);
-    const health = Math.max(0, previous.health - biteDamage);
+    const health = Math.max(0, previous.health - needDamage - biteDamage);
     state = {
       ...state,
       survivor: {
@@ -286,6 +305,8 @@ export function createGameCoordinator({
         attack: health > 0 ? attack : null,
         walkDistance: previous.walkDistance + traveled,
         stamina,
+        hunger,
+        thirst,
       },
       zombies: zombies.map((zombie) => zombie.getState()),
       occupiedHouseId: getHouseAt(nextPosition, state.occupiedHouseId),
@@ -303,8 +324,9 @@ export function createGameCoordinator({
       for (const { attack } of state.zombies) {
         if (attack) elapsed = Math.min(elapsed, attack.remainingMs);
       }
-      advanceSimulation(elapsed);
-      remaining -= elapsed;
+      const survivalStep = getSurvivalStep(state.survivor, elapsed);
+      advanceSimulation(survivalStep);
+      remaining -= survivalStep.elapsedMs;
     }
     notify();
     return state;
@@ -312,6 +334,15 @@ export function createGameCoordinator({
 
   return {
     ...pause,
+    handleEscape() {
+      if (state.survivor.health > 0) pause.handleEscape();
+    },
+    setForegroundPanel(panel) {
+      if (panel === null || state.survivor.health > 0) pause.setForegroundPanel(panel);
+    },
+    setTabHidden(hidden) {
+      if (state.survivor.health > 0) pause.setTabHidden(hidden);
+    },
     getState: () => state,
     subscribe(listener) {
       listeners.add(listener);
@@ -392,6 +423,18 @@ export function createGameCoordinator({
       state = { ...state, survivor: { ...state.survivor, equippedWeaponId } };
       notify();
       return true;
+    },
+    getItemUse,
+    useItem(slot, itemId) {
+      const action = getItemUse(slot, itemId);
+      if (action.status !== 'eligible') return action;
+
+      const { stat, value } = action;
+      const inventory = [...state.survivor.inventory];
+      inventory[slot] = null;
+      state = { ...state, survivor: { ...state.survivor, [stat]: value, inventory } };
+      notify();
+      return { status: 'used', stat, value };
     },
     dropItem(slot, itemId) {
       const { survivor } = state;

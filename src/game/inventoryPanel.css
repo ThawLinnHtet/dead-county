@@ -172,11 +172,11 @@
   background: #963c33;
 }
 
-.inventory-drop-feedback {
+.inventory-item-feedback {
   color: var(--focus);
 }
 
-.item-details > .inventory-drop-feedback:empty {
+.item-details > .inventory-item-feedback:empty {
   margin: 0;
 }
 

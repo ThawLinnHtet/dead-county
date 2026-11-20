@@ -48,15 +48,28 @@ test('both fresh survivors can walk to the kitchen, transfer its guaranteed can 
     game.toggleInventory();
     assert.equal(game.toggleEquip(0, bat.id), true);
     game.closeInventoryPanel();
-    assert.equal(game.getState().survivor.health, 100);
+    const opening = game.getState();
+    assert.equal(opening.survivor.health, 100);
+    if (route === detour) {
+      game.handleEscape();
+      assert.strictEqual(game.step(90_000), opening);
+      game.resume();
+    }
 
     for (const point of [{ x: 10.7, y: 8.3 }, porchA, ...route, kitchen]) walkTo(game, point);
     assert.equal(game.getState().occupiedHouseId, 'house_b');
     assert.equal(game.getSearchTarget()?.name, cabinet);
     assert.equal(game.search(cabinet), true);
     assert.deepEqual(game.transferItem(cabinet, can.id), { status: 'transferred', slot: 1 });
-    assert.equal(game.getState().survivor.inventory[1], can);
-    assert.ok(!game.getState().containers[cabinet]?.some(item => item.id === can.id));
+    const supplied = game.getState();
+    assert.equal(supplied.survivor.inventory[1], can);
+    assert.ok(!supplied.containers[cabinet]?.some(item => item.id === can.id));
+    if (route === detour) {
+      assert.ok(supplied.activeTimeMs >= 15_000 && supplied.activeTimeMs < 40_000);
+      assert.ok(supplied.survivor.hunger > opening.survivor.hunger);
+      assert.ok(supplied.survivor.thirst > opening.survivor.thirst);
+      assert.equal(supplied.survivor.health, 100);
+    }
     game.closeInventoryPanel();
     walkTo(game, porchB);
     assert.equal(game.getState().occupiedHouseId, null);

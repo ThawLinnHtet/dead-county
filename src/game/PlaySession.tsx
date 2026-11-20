@@ -4,6 +4,7 @@ import type { GameCoordinator } from './gameCoordinator';
 import { InventoryPanel } from './InventoryPanel';
 import { PauseMenu } from './PauseMenu';
 import type { PauseSaveActions } from './PauseMenu';
+import { SurvivalMeters } from './SurvivalMeters';
 
 const locationNames: Readonly<Record<string, string>> = {
   house_a: 'House A',
@@ -24,7 +25,6 @@ export function PlaySession({
     coordinator.subscribe,
     () => coordinator.getState().occupiedHouseId,
   );
-  const health = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.health);
   const batEquipped = useSyncExternalStore(coordinator.subscribe, () => !!coordinator.getState().survivor.equippedWeaponId);
   const survivalSeconds = useSyncExternalStore(
     coordinator.subscribe,
@@ -66,13 +66,8 @@ export function PlaySession({
       <div ref={foreground} inert={pause.isPaused}>
         <GameViewport coordinator={coordinator} />
         <header className="game-location">
-          <h1>Dead County</h1>
-          <p role="status">{locationNames[occupiedHouseId ?? ''] ?? 'Neighborhood'}</p>
-          <div className="combat-health">
-            <label htmlFor="survivor-health">Health</label>
-            <meter id="survivor-health" min={0} max={100} value={health} />
-            <span aria-hidden="true">{Math.ceil(health)} / 100</span>
-          </div>
+          <SurvivalMeters coordinator={coordinator} />
+          <p className="game-location-label" role="status">{locationNames[occupiedHouseId ?? ''] ?? 'Neighborhood'}</p>
         </header>
         <div className="survival-clock">
           <span>Survival Time</span>
