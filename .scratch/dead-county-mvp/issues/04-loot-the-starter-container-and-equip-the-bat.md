@@ -4,14 +4,16 @@
 
 **Blocked by:** 02 — Pause and resume in the browser, 03 — Choose a survivor and start a run
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## Acceptance criteria
 
-- [ ] Either survivor can reach the designated container by the short indoor route. Every fresh run gives the container exactly one Baseball Bat and at least one Water Bottle.
-- [ ] One anchored E Search prompt opens the approved blocking Loot interface. Each Transfer moves one instance to the first empty slot in row order and briefly highlights the receiving slot.
-- [ ] Reopening the container shows only remaining items. A full inventory preserves the source instance and reports the capacity failure.
-- [ ] Equip is an explicit action and marks the bat’s slot as equipped. A transferred bottle stays in inventory and has disabled Use at zero Thirst. Closing the panel clears only its own pause reason.
+- [x] Either survivor can reach the designated container by the short indoor route. Every fresh run gives the container exactly one Baseball Bat and at least one Water Bottle.
+- [x] One anchored E Search prompt opens the approved blocking Loot interface. Each Transfer moves one instance to the first empty slot in row order and briefly highlights the receiving slot.
+- [x] Reopening the container shows only remaining items. A full inventory preserves the source instance and reports the capacity failure.
+- [x] Equip is an explicit action and marks the bat’s slot as equipped. A transferred bottle stays in inventory and has disabled Use at zero Thirst. Closing the panel clears only its own pause reason.
+
+Checked the normal Chrome flow with both survivors at 1280 × 720 and 1920 × 1080. Coordinator tests exercise full capacity, stale selections, and closing Loot after an independent visibility pause.
 
 ## Design and references
 

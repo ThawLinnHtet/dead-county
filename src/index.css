@@ -4,3 +4,97 @@
   --color-background: #0c0f10;
   --color-foreground: #eee6d6;
 }
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: "Arial", sans-serif;
+}
+
+.game-screen {
+  position: relative;
+  display: grid;
+  min-height: 100svh;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.game-viewport {
+  position: absolute;
+  inset: 0;
+  background: #3f4934;
+  touch-action: none;
+}
+
+.game-viewport canvas {
+  display: block;
+}
+
+.game-screen::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: radial-gradient(ellipse at 52% 48%, transparent 41%, rgb(12 15 16 / 36%) 100%);
+  content: "";
+  pointer-events: none;
+}
+
+.game-location,
+.movement-hint {
+  position: absolute;
+  z-index: 2;
+  left: clamp(1rem, 3vw, 2.5rem);
+}
+
+.game-location {
+  top: clamp(1rem, 3vw, 2.5rem);
+}
+
+.game-location-label {
+  width: fit-content;
+  margin: .35rem 0 0;
+  padding: .25rem .5rem;
+  border: 1px solid #49544a;
+  border-radius: 3px;
+  background: rgb(18 20 18 / 94%);
+  color: #d6ae6d;
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .11em;
+  text-transform: uppercase;
+}
+
+.movement-hint {
+  bottom: clamp(1rem, 3vw, 2.25rem);
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .5rem .7rem;
+  border: 1px solid #49544a;
+  background: rgb(12 15 16 / 85%);
+  font-size: .78rem;
+}
+
+.movement-keys {
+  display: flex;
+  gap: .2rem;
+}
+
+.movement-keys kbd {
+  display: grid;
+  width: 1.45rem;
+  height: 1.45rem;
+  place-items: center;
+  border: 1px solid #66695a;
+  border-radius: 3px;
+  background: #242822;
+  color: #eee6d6;
+  font: 700 .74rem/1 "Arial", sans-serif;
+}
+
+.mouse-control kbd {
+  width: auto;
+  padding-inline: .35rem;
+  white-space: nowrap;
+}

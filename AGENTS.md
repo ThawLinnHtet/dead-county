@@ -22,3 +22,10 @@ Dead County is an original single-player desktop browser survival game. Build th
 | Save, Continue, replacement or death | [Save requirements](docs/PRD.md#11-functional-requirements--saveload-and-future-migration-p0), [ownership and revision ADR](docs/adr/0003-exclusive-local-run-and-save-revisions.md), [damaged save ADR](docs/adr/0004-confirmed-damaged-save-replacement.md), [Confirmation Dialog](docs/CONFIRMATION_DIALOG_SPEC.md) and [Game Over](docs/GAME_OVER_SPEC.md) |
 
 Use the PRD’s acceptance criteria for required outcomes and its open parameters for tuning. Preserve established behavior across slices, especially the active simulation clock, item identity and save ownership.
+
+## Code review
+
+1. Identify the base ref and the ticket or PRD requirements under review. Review the actual diff from the merge base and read the relevant design specs and ADRs.
+2. Check the spec and implementation standards separately. Trace each changed player flow through its normal entry point, including failure and retry. Check regressions in callers and adjacent flows. For visuals, compare the running build with the linked reference at the specified viewport or zoom.
+3. Apply the [security review checklist](SECURITY.md) to changes that touch a trust boundary. Run the build and the relevant behavior checks. Distinguish results you observed from gaps that still need verification.
+4. Report actionable findings first, ordered by severity within each review area. Include the file and line, the triggering condition, the player or data impact, and the violated requirement or check. Record the base ref and checks run. If there are no findings, state that and call out any untested behavior.
