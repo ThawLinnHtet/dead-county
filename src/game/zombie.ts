@@ -1,3 +1,5 @@
+import { advanceAttack, aimFrom, batConfig, beginAttack, isInReach } from './combat.ts';
+import type { AttackState } from './combat.ts';
 import { findRoute } from './navigation.ts';
 import { canOccupy, canTraverse, hasLineOfSight, zombieSpawns } from './world.ts';
 import type { WorldPoint } from './world.ts';
@@ -25,6 +27,9 @@ export interface ZombieState {
   readonly id: string;
   readonly appearanceId: ZombieAppearanceId;
   readonly position: WorldPoint;
+  readonly health: number;
+  readonly lastBatHitAtMs: number | null;
+  readonly attack: AttackState | null;
   readonly facingLeft: boolean;
   readonly walkDistance: number;
   readonly moving: boolean;
@@ -32,11 +37,19 @@ export interface ZombieState {
   readonly randomState: number;
 }
 
-const zombieConfig = {
+export const zombieConfig = {
+  health: 80,
   wanderSpeed: 0.9,
   chaseSpeed: 2.85,
   detectionDistance: 6.5,
   approachDistance: 0.52,
+  bite: {
+    reach: 0.78,
+    damage: 22,
+    windupMs: 425,
+    contactMs: 135,
+    recoveryMs: 560,
+  },
   pursuitGraceMs: 4200,
   pathRefreshMs: 320,
   pathAttemptsPerWander: 2,
@@ -58,6 +71,9 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
     id,
     appearanceId,
     position: { ...position },
+    health: zombieConfig.health,
+    lastBatHitAtMs: null,
+    attack: null,
     facingLeft: true,
     walkDistance: 0,
     moving: false,
@@ -183,11 +199,44 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
 
   return {
     getState: () => state,
+    receiveBatHit(origin: WorldPoint, activeTimeMs: number) {
+      const { position } = state;
+      const direction = aimFrom(origin, position);
+      const displaced = direction && {
+        x: position.x + direction.x * batConfig.knockback,
+        y: position.y + direction.y * batConfig.knockback,
+      };
+      const health = Math.max(0, state.health - batConfig.damage);
+      state = {
+        ...state,
+        health,
+        lastBatHitAtMs: activeTimeMs,
+        attack: health > 0 ? state.attack : null,
+        position: displaced && canTraverse(position, displaced) ? displaced : position,
+        moving: health > 0 && state.moving,
+      };
+      resetPath();
+    },
+    resolveBite(survivor: WorldPoint): number {
+      if (state.attack?.phase !== 'contact' || state.attack.damageApplied
+          || !isInReach(state.position, survivor, zombieConfig.bite.reach)) return 0;
+      state = { ...state, attack: { ...state.attack, damageApplied: true } };
+      return zombieConfig.bite.damage;
+    },
     step(survivor: WorldPoint, deltaMs: number, activeTimeMs: number): ZombieState {
+      if (state.health === 0) return state;
       const perceived = perceive(survivor, deltaMs);
       const behavior = perceived.kind === 'wander' && state.behavior.kind === 'wander'
         ? wander(perceived, deltaMs) : perceived;
-      state = move(behavior, deltaMs, activeTimeMs);
+      state = state.attack
+        ? { ...state, behavior, attack: advanceAttack(state.attack, deltaMs, zombieConfig.bite), moving: false }
+        : move(behavior, deltaMs, activeTimeMs);
+
+      if (!state.attack && behavior.kind === 'chase' && behavior.graceRemainingMs === null
+          && isInReach(state.position, survivor, zombieConfig.bite.reach)) {
+        const facing = aimFrom(state.position, survivor) ?? (state.facingLeft ? { x: 0, y: 1 } : { x: 1, y: 0 });
+        state = { ...state, attack: beginAttack(facing, zombieConfig.bite), facingLeft: facing.x < facing.y, moving: false };
+      }
       return state;
     },
   };

@@ -18,6 +18,8 @@ export function PlaySession({
     coordinator.subscribe,
     () => coordinator.getState().occupiedHouseId,
   );
+  const health = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.health);
+  const batEquipped = useSyncExternalStore(coordinator.subscribe, () => !!coordinator.getState().survivor.equippedWeaponId);
   const survivalSeconds = useSyncExternalStore(
     coordinator.subscribe,
     () => Math.floor(coordinator.getState().activeTimeMs / 1000),
@@ -60,6 +62,11 @@ export function PlaySession({
         <header className="game-location">
           <h1>Dead County</h1>
           <p role="status">{occupiedHouseId === 'house_a' ? 'House A' : 'Neighborhood'}</p>
+          <div className="combat-health">
+            <label htmlFor="survivor-health">Health</label>
+            <meter id="survivor-health" min={0} max={100} value={health} />
+            <span aria-hidden="true">{Math.ceil(health)} / 100</span>
+          </div>
         </header>
         <div className="survival-clock">
           <span>Survival Time</span>
@@ -74,6 +81,12 @@ export function PlaySession({
           <span>Move</span>
           <span className="movement-keys" aria-hidden="true"><kbd>I</kbd></span>
           <span>Inventory</span>
+          {batEquipped && (
+            <>
+              <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Left Click</kbd></span>
+              <span aria-label="Left Click to swing">Swing</span>
+            </>
+          )}
         </aside>
       </div>
       {pause.foregroundPanel === 'pause' && (

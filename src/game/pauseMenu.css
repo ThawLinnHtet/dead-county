@@ -136,7 +136,6 @@
   color: #eee6d6;
   font-size: .75rem;
   text-align: center;
-  pointer-events: none;
 }
 
 .survival-clock time {

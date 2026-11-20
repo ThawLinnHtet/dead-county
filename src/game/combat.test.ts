@@ -1,0 +1,216 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { createGameCoordinator } from './gameCoordinator.ts';
+import type { GameCoordinator } from './gameCoordinator.ts';
+import type { WorldPoint } from './world.ts';
+import type { ZombieSpawn } from './zombie.ts';
+
+const survivorPosition = { x: 11.9, y: 9.15 };
+const cabinet = 'starter_container';
+
+function spawn(id: string, position: WorldPoint): ZombieSpawn {
+  return { id, position, destination: position };
+}
+
+function equipBat(game: GameCoordinator) {
+  const bat = game.getState().containers[cabinet]![0]!;
+  assert.equal(game.search(cabinet), true);
+  assert.deepEqual(game.transferItem(cabinet, bat.id), { status: 'transferred', slot: 0 });
+  assert.equal(game.toggleEquip(0, bat.id), true);
+  game.closeInventoryPanel();
+}
+
+test('the bat commits world aim and damages only the ordinal winner among equal targets', () => {
+  const target = { x: 12.7, y: 9.15 };
+  const zombies = [spawn('a-zombie', target), spawn('Z-zombie', target)];
+  for (const zombieSpawns of [zombies, [...zombies].reverse()]) {
+    const game = createGameCoordinator({ position: survivorPosition, zombieSpawns });
+    equipBat(game);
+    const initial = game.getState().zombies[0]!.health;
+    assert.equal(game.startBatSwing(target), true);
+    assert.equal(game.startBatSwing({ x: 11, y: 9.15 }), false);
+    game.step(100);
+    assert.ok(game.getState().zombies.every(({ health }) => health === initial));
+    game.step(250);
+    const damage = game.getState().zombies.filter(({ health }) => health < initial);
+    assert.deepEqual(damage.map(({ id }) => id), ['Z-zombie']);
+    game.step(250);
+    assert.equal(game.getState().zombies.find(({ id }) => id === 'Z-zombie')?.health, damage[0]!.health);
+  }
+});
+
+test('two simultaneous bites reach contact once each and a nonlethal bite preserves the swing', () => {
+  const game = createGameCoordinator({
+    position: survivorPosition,
+    zombieSpawns: [
+      spawn('first', { x: 12.5, y: 9.15 }),
+      spawn('second', { x: 12.5, y: 9.24 }),
+    ],
+  });
+  equipBat(game);
+  game.step(200);
+  assert.equal(game.getState().survivor.health, 100);
+  assert.ok(game.getState().zombies.every(({ attack }) => attack?.phase === 'windup'));
+  game.step(250);
+  assert.equal(game.startBatSwing({ x: 12.5, y: 9.15 }), true);
+  game.step(175);
+  const { survivor, zombies } = game.getState();
+  assert.equal(survivor.health, 56);
+  assert.equal(survivor.attack?.phase, 'windup');
+  assert.ok(zombies.every(({ attack }) => attack?.phase === 'contact' && attack.damageApplied));
+  game.step(75);
+  assert.equal(game.getState().survivor.health, 56);
+  assert.equal(game.getState().survivor.attack?.damageApplied, true);
+});
+
+
+test('the locked arc favors centerline then distance, while a wall blocks an otherwise reachable target', () => {
+  const game = createGameCoordinator({
+    position: survivorPosition,
+    zombieSpawns: [
+      spawn('closer-but-off-center', { x: 12.42, y: 8.9 }),
+      spawn('center-farther', { x: 12.645, y: 9.15 }),
+      spawn('center-nearer', { x: 12.55, y: 9.15 }),
+    ],
+  });
+  equipBat(game);
+  game.step(1);
+  assert.equal(game.startBatSwing({ x: 13, y: 9.15 }), true);
+  assert.deepEqual(game.step(250).zombies.filter(({ lastBatHitAtMs }) => lastBatHitAtMs !== null).map(({ id }) => id),
+    ['center-nearer']);
+
+  const blocked = createGameCoordinator({
+    position: { x: 13.62, y: 9.6 },
+    zombieSpawns: [spawn('outside', { x: 14.30, y: 9.6 })],
+  });
+  equipBat(blocked);
+  assert.equal(blocked.startBatSwing({ x: 14.30, y: 9.6 }), true);
+  assert.equal(blocked.step(250).survivor.attack?.damageApplied, false);
+  assert.equal(blocked.getState().zombies[0]!.lastBatHitAtMs, null);
+});
+
+test('strike knockback leaves a living zombie committed, and bite contact rechecks its new reach', () => {
+  const game = createGameCoordinator({
+    position: survivorPosition,
+    zombieSpawns: [
+      spawn('knocked-back', { x: 12.55, y: 9.15 }),
+      spawn('still-in-reach', { x: 12.56, y: 9.24 }),
+    ],
+  });
+  equipBat(game);
+  game.step(1);
+  assert.equal(game.startBatSwing({ x: 13, y: 9.15 }), true);
+  const wounded = game.step(250).zombies[0]!;
+  assert.ok(wounded.health > 0 && wounded.lastBatHitAtMs !== null);
+  assert.equal(wounded.attack?.phase, 'windup');
+  const contact = game.step(175);
+  assert.equal(contact.survivor.health, 78);
+  assert.equal(contact.zombies[0]!.attack?.phase, 'contact');
+  assert.equal(contact.zombies[0]!.attack?.damageApplied, false);
+  assert.equal(contact.zombies[1]!.attack?.damageApplied, true);
+});
+
+test('an empty Stamina meter permits a swing and slow steps through recovery', () => {
+  const game = createGameCoordinator({ position: survivorPosition, zombieSpawns: [] });
+  equipBat(game);
+  for (let tick = 0; game.getState().survivor.stamina > 0 && tick < 100; tick += 1) {
+    const side = tick % 2 === 0 ? 1 : -1;
+    game.setMovement({ x: 2 * side, y: side }, true);
+    game.step(50);
+  }
+  const exhausted = game.getState().survivor;
+  assert.equal(exhausted.stamina, 0);
+  assert.equal(game.startBatSwing(exhausted.position), true);
+  assert.equal(game.getState().survivor.stamina, 0);
+  assert.deepEqual(game.getState().survivor.attack?.direction, exhausted.facing);
+
+  game.setMovement({ x: 2, y: 1 }, false);
+  const slowStep = game.step(50).survivor;
+  assert.equal(slowStep.gait, 'walk');
+  assert.ok(slowStep.position.x > exhausted.position.x && slowStep.position.x - exhausted.position.x < .12);
+  game.setMovement({ x: 0, y: 0 });
+  const recovery = game.step(450).survivor;
+  assert.equal(recovery.attack?.phase, 'recovery');
+  game.setMovement({ x: -2, y: -1 }, true);
+  assert.equal(game.step(50).survivor.gait, 'walk');
+  game.step(250);
+  assert.equal(game.getState().survivor.attack, null);
+  assert.equal(game.step(50).survivor.gait, 'walk');
+  game.setMovement({ x: 0, y: 0 }, false);
+  game.step(900);
+  game.setMovement({ x: 2, y: 1 }, true);
+  assert.equal(game.step(50).survivor.gait, 'sprint');
+});
+
+test('a swing immediately slows a sprint without spending Stamina, and held Shift resumes it after recovery', () => {
+  const game = createGameCoordinator({ position: survivorPosition, zombieSpawns: [] });
+  equipBat(game);
+  game.setMovement({ x: 2, y: 1 }, true);
+  const sprinting = game.step(50).survivor;
+  assert.equal(sprinting.gait, 'sprint');
+  assert.equal(game.startBatSwing({ x: 13, y: 9.15 }), true);
+  assert.equal(game.getState().survivor.gait, 'walk');
+  const slowStep = game.step(50).survivor;
+  assert.equal(slowStep.gait, 'walk');
+  assert.ok(slowStep.stamina >= sprinting.stamina);
+  assert.ok(slowStep.position.x - sprinting.position.x < .12);
+  game.setMovement({ x: 0, y: 0 }, true);
+  game.step(750);
+  game.setMovement({ x: 2, y: 1 }, true);
+  assert.equal(game.step(50).survivor.gait, 'sprint');
+});
+
+test('overlays freeze committed attacks and reject attack commands until play resumes', () => {
+  const game = createGameCoordinator({ position: survivorPosition, zombieSpawns: [] });
+  const pointer = { x: 13, y: 9.15 };
+  assert.equal(game.startBatSwing(pointer), false);
+  equipBat(game);
+  for (const panel of ['inventory', 'loot', 'map'] as const) {
+    game.setForegroundPanel(panel);
+    assert.equal(game.startBatSwing(pointer), false);
+    game.handleEscape();
+  }
+  game.handleEscape();
+  assert.equal(game.startBatSwing(pointer), false);
+  game.resume();
+
+  assert.equal(game.startBatSwing(pointer), true);
+  game.step(150);
+  game.handleEscape();
+  const paused = game.getState();
+  assert.strictEqual(game.step(1500), paused);
+  game.resume();
+  assert.equal(game.step(99).survivor.attack?.phase, 'windup');
+  assert.equal(game.step(1).survivor.attack?.phase, 'contact');
+});
+
+test('a killed zombie and a dead survivor cannot complete or start further attacks', () => {
+  const target = { x: 12.5, y: 9.15 };
+  const fighter = createGameCoordinator({ position: survivorPosition, zombieSpawns: [spawn('target', target)] });
+  equipBat(fighter);
+  for (let swing = 0; swing < 3; swing += 1) {
+    assert.equal(fighter.startBatSwing(target), true);
+    for (let frame = 0; frame < 16; frame += 1) fighter.step(50);
+  }
+  const corpse = fighter.getState().zombies[0]!;
+  assert.equal(corpse.health, 0);
+  assert.equal(corpse.attack, null);
+  assert.equal(corpse.moving, false);
+  const afterDeath = fighter.getState().survivor.health;
+  assert.strictEqual(fighter.step(1500).zombies[0], corpse);
+  assert.equal(fighter.getState().survivor.health, afterDeath);
+
+  const bitten = createGameCoordinator({
+    position: survivorPosition,
+    zombieSpawns: Array.from({ length: 5 }, (_, index) => spawn('biter-' + index, target)),
+  });
+  equipBat(bitten);
+  bitten.step(50);
+  bitten.step(350);
+  assert.equal(bitten.startBatSwing(target), true);
+  const final = bitten.step(100);
+  assert.equal(final.survivor.health, 0);
+  assert.equal(final.survivor.attack, null);
+  assert.equal(bitten.startBatSwing(target), false);
+  assert.strictEqual(bitten.step(1000), final);
+});
