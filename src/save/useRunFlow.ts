@@ -1,0 +1,298 @@
+import { useEffect, useRef, useState } from 'react';
+import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator';
+import type { GameCoordinator, SurvivorId } from '../game/gameCoordinator';
+import { SaveFailure } from './SaveRepository';
+import type { SaveRepository } from './SaveRepository';
+import { captureRun } from './runSnapshot';
+import type { SaveRead } from './runSnapshot';
+
+type Availability = SaveRead['kind'] | 'checking' | 'blocked' | 'read_failed' | 'unavailable';
+type MenuDestination = 'main' | 'survivors';
+type OwnedSlot = { owner: string; revision: number };
+type RunSession = OwnedSlot & { id: string; coordinator: GameCoordinator };
+type Replacement = OwnedSlot & { characterId: SurvivorId };
+export type DeathSaveStatus = 'pending' | 'failed' | 'complete';
+type PauseFeedback = { kind: 'saved' | 'error'; message: string };
+
+const blockedMessage = 'This run is open in another tab.';
+const storageMessage = 'Couldn’t access the local save. Try again.';
+const revisionMessage = 'Your progress wasn’t saved because the local save changed.';
+
+function availabilityMessage(status: Availability, unsupportedReason?: 'newer_schema' | 'world') {
+  switch (status) {
+    case 'checking': return 'Checking the local save…';
+    case 'blocked': return blockedMessage;
+    case 'unsupported': return unsupportedReason === 'newer_schema'
+      ? 'This save uses a newer save format. Open it with a compatible version of Dead County.'
+      : 'This save uses a different neighborhood version. Open it with a compatible version of Dead County.';
+    case 'damaged': return 'The local save is damaged.';
+    case 'read_failed': return storageMessage;
+    case 'unavailable': return 'Local run ownership is unavailable in this browser.';
+    case 'empty':
+    case 'dead': return 'No run available to continue';
+    case 'ready': return '';
+  }
+}
+
+function failureKind(error: unknown) {
+  return error instanceof SaveFailure ? error.kind : 'storage';
+}
+
+export function useRunFlow(repository: SaveRepository) {
+  const [session, setSession] = useState<RunSession | null>(null);
+  const [destination, setDestination] = useState<MenuDestination>('main');
+  const [availability, setAvailability] = useState<{ status: Availability; message: string }>({
+    status: 'checking', message: availabilityMessage('checking'),
+  });
+  const [pending, setPending] = useState(false);
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [replacement, setReplacement] = useState<Replacement | null>(null);
+  const [pauseFeedback, setPauseFeedback] = useState<PauseFeedback | null>(null);
+  const [deathStatus, setDeathStatus] = useState<DeathSaveStatus>('pending');
+
+  const operation = useRef(false);
+  const currentRun = useRef<RunSession | null>(null);
+  const pendingReplacement = useRef<Replacement | null>(null);
+  const deathWrite = useRef<Promise<boolean> | null>(null);
+  const deathCommitted = useRef(false);
+
+  function displayAvailability(status: Availability, reason?: 'newer_schema' | 'world') {
+    const message = availabilityMessage(status, reason);
+    setAvailability((previous) => previous.status === status && previous.message === message
+      ? previous : { status, message });
+  }
+
+  async function checkAvailability() {
+    if (await repository.isOccupied()) return { status: 'blocked' } as const;
+    const result = await repository.read();
+    return { status: result.kind, reason: result.kind === 'unsupported' ? result.reason : undefined };
+  }
+
+  useEffect(() => {
+    if (session || pending || replacement) return;
+    let current = true;
+    let checking = false;
+    async function refresh() {
+      if (checking || operation.current || currentRun.current || pendingReplacement.current) return;
+      checking = true;
+      try {
+        const { status, reason } = await checkAvailability();
+        if (current && !operation.current) displayAvailability(status, reason);
+      } catch (error) {
+        if (current && !operation.current) {
+          displayAvailability(failureKind(error) === 'unavailable' ? 'unavailable' : 'read_failed');
+        }
+      } finally {
+        checking = false;
+      }
+    }
+    // Refresh on authoritative lock queries even if an owning tab crashes without notifying us.
+    const interval = window.setInterval(refresh, 1000);
+    const unsubscribe = repository.subscribeAvailability(refresh);
+    window.addEventListener('focus', refresh);
+    void refresh();
+    return () => {
+      current = false;
+      window.clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      unsubscribe();
+    };
+  }, [repository, session, pending, replacement]);
+
+  function beginMenuCommand() {
+    if (operation.current || currentRun.current) return false;
+    operation.current = true;
+    setPending(true);
+    setMenuError(null);
+    return true;
+  }
+
+  function finishMenuCommand() {
+    operation.current = false;
+    setPending(false);
+  }
+
+  function enterRun(slot: RunSession) {
+    currentRun.current = slot;
+    deathWrite.current = null;
+    deathCommitted.current = false;
+    setDeathStatus('pending');
+    setPauseFeedback(null);
+    setSession(slot);
+  }
+
+  function leaveRun(next: MenuDestination) {
+    currentRun.current = null;
+    displayAvailability('checking');
+    setDestination(next);
+    setSession(null);
+  }
+
+  async function makeNewRun(slot: OwnedSlot, characterId: SurvivorId) {
+    const coordinator = createGameCoordinator({ characterId });
+    const id = crypto.randomUUID();
+    const revision = await repository.commit(slot.owner, slot.revision, {
+      kind: 'create', run: { id, snapshot: captureRun(coordinator) },
+    });
+    enterRun({ owner: slot.owner, revision, id, coordinator });
+  }
+
+  async function withAcquiredSlot(action: (owner: string, save: SaveRead) => Promise<void>) {
+    if (pendingReplacement.current || !beginMenuCommand()) return;
+    let owner: string | null = null;
+    let blocked = false;
+    try {
+      owner = await repository.tryAcquire();
+      if (owner === null) {
+        blocked = true;
+        return;
+      }
+      const saved = await repository.read(owner);
+      displayAvailability(saved.kind, saved.kind === 'unsupported' ? saved.reason : undefined);
+      await action(owner, saved);
+    } catch (error) {
+      const kind = failureKind(error);
+      if (kind === 'ownership') blocked = true;
+      else if (kind === 'unavailable') displayAvailability('unavailable');
+      else if (kind === 'read') displayAvailability('read_failed');
+      else setMenuError(kind === 'conflict' ? revisionMessage : storageMessage);
+    } finally {
+      if (owner && !currentRun.current && !pendingReplacement.current) await repository.release(owner);
+      if (blocked) displayAvailability('blocked');
+      finishMenuCommand();
+    }
+  }
+
+  async function requestStart(characterId: SurvivorId) {
+    await withAcquiredSlot(async (owner, saved) => {
+      if (saved.kind === 'ready') {
+        const confirmation = { owner, revision: saved.revision, characterId };
+        pendingReplacement.current = confirmation;
+        setReplacement(confirmation);
+      } else if (saved.kind === 'dead' || saved.kind === 'empty') {
+        await makeNewRun({ owner, revision: saved.revision }, characterId);
+      }
+    });
+  }
+
+  async function continueRun() {
+    await withAcquiredSlot(async (owner, saved) => {
+      if (saved.kind !== 'ready') return;
+      enterRun({
+        owner, revision: saved.revision, id: saved.run.id,
+        coordinator: restoreGameCoordinator(saved.run.snapshot),
+      });
+    });
+  }
+
+  async function finishReplacement(confirm: boolean) {
+    const choice = pendingReplacement.current;
+    if (!choice || !beginMenuCommand()) return;
+    try {
+      if (confirm) await makeNewRun(choice, choice.characterId);
+    } catch (error) {
+      const kind = failureKind(error);
+      if (kind === 'ownership') displayAvailability('blocked');
+      else setMenuError(kind === 'conflict' ? revisionMessage : storageMessage);
+    } finally {
+      if (!currentRun.current) await repository.release(choice.owner);
+      pendingReplacement.current = null;
+      setReplacement(null);
+      finishMenuCommand();
+    }
+  }
+
+  async function save(exit: boolean) {
+    const active = currentRun.current;
+    if (!active || operation.current || active.coordinator.getState().gameOver) return;
+    const { foregroundPanel, tabHidden, savePending } = active.coordinator.getPauseState();
+    if (foregroundPanel !== 'pause' || tabHidden || savePending) return;
+    operation.current = true;
+    setPauseFeedback(null);
+    active.coordinator.setSavePending(true);
+    let releaseHold = true;
+    try {
+      active.revision = await repository.commit(active.owner, active.revision, {
+        kind: 'save', run: { id: active.id, snapshot: captureRun(active.coordinator) },
+      });
+      if (exit) {
+        await repository.release(active.owner);
+        releaseHold = false;
+        leaveRun('main');
+      } else {
+        setPauseFeedback({ kind: 'saved', message: 'Game saved' });
+      }
+    } catch (error) {
+      const kind = failureKind(error);
+      if (kind === 'ownership') {
+        await repository.release(active.owner);
+        releaseHold = false;
+        leaveRun('main');
+        displayAvailability('blocked');
+      } else {
+        setPauseFeedback({ kind: 'error', message: kind === 'conflict' ? revisionMessage : storageMessage });
+        if (kind === 'conflict' || kind === 'invalid') releaseHold = false;
+      }
+    } finally {
+      if (releaseHold) active.coordinator.setSavePending(false);
+      operation.current = false;
+    }
+  }
+
+  function invalidateDeath(active: RunSession) {
+    if (deathCommitted.current) return Promise.resolve(true);
+    if (deathWrite.current) return deathWrite.current;
+    setDeathStatus('pending');
+    deathWrite.current = (async () => {
+      try {
+        active.revision = await repository.commit(active.owner, active.revision, { kind: 'invalidate', runId: active.id });
+        deathCommitted.current = true;
+        setDeathStatus('complete');
+        return true;
+      } catch {
+        // Keep the lease and the terminal run in view until invalidation commits.
+        setDeathStatus('failed');
+        return false;
+      } finally {
+        deathWrite.current = null;
+      }
+    })();
+    return deathWrite.current;
+  }
+
+  useEffect(() => {
+    if (!session) return;
+    let observed = false;
+    let foreground = session.coordinator.getPauseState().foregroundPanel;
+    const observeSession = () => {
+      const next = session.coordinator.getPauseState().foregroundPanel;
+      if (foreground === 'pause' && next !== foreground) setPauseFeedback(null);
+      foreground = next;
+      if (observed || !session.coordinator.getState().gameOver) return;
+      observed = true;
+      void invalidateDeath(session);
+    };
+    const unsubscribe = session.coordinator.subscribe(observeSession);
+    observeSession();
+    return unsubscribe;
+  }, [session]);
+
+  async function leaveDeadRun(next: MenuDestination) {
+    const active = currentRun.current;
+    if (!active?.coordinator.getState().gameOver || operation.current) return;
+    operation.current = true;
+    try {
+      if (!await invalidateDeath(active)) return;
+      await repository.release(active.owner);
+      leaveRun(next);
+    } finally {
+      operation.current = false;
+    }
+  }
+
+  return {
+    session, destination, availability, pending, menuError, replacement, pauseFeedback, deathStatus,
+    requestStart, continueRun, finishReplacement, save, leaveDeadRun,
+    clearMenuError: () => setMenuError(null),
+  };
+}

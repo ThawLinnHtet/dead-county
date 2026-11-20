@@ -6,6 +6,7 @@ import './pauseMenu.css';
 export interface PauseSaveActions {
   readonly saveGame: () => void;
   readonly saveAndExit: () => void;
+  readonly feedback?: { kind: 'saved' | 'error'; message: string } | null;
 }
 
 export function PauseMenu({
@@ -80,7 +81,11 @@ export function PauseMenu({
           Save &amp; Exit
         </button>
       </div>
-      {pause.savePending && <p className="pause-menu__status" role="status">Saving…</p>}
+      {saveActions?.feedback
+        ? <p className="pause-menu__status" role={saveActions.feedback.kind === 'error' ? 'alert' : 'status'}>
+            {saveActions.feedback.message}
+          </p>
+        : pause.savePending && <p className="pause-menu__status" role="status">Saving…</p>}
     </dialog>
   );
 }
