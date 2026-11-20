@@ -7,17 +7,19 @@ import femaleSurvivorUrl from './survivor-female.png';
 import { drawFurniture } from './drawFurniture';
 import { drawHouse } from './drawHouse';
 import { drawScenery } from './drawScenery';
-import type { GameCoordinator, GameState } from './gameCoordinator';
+import type { GameCoordinator, GameState, InteractionTarget } from './gameCoordinator';
+import { itemDefinitions } from './items';
 import groundUrl from './maps/ground.png';
 import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, unproject } from './world';
 import { zombieConfig } from './zombie';
 
 const outsideTerrainTiles = 7;
-type SearchPromptPosition = { id: string; x: number; y: number };
+type InteractionPromptPosition = { target: InteractionTarget; x: number; y: number };
 
 export class HouseScene extends Phaser.Scene {
   private readonly coordinator: GameCoordinator;
-  private readonly showSearchPrompt: (target: SearchPromptPosition | null) => void;
+  private readonly showInteractionPrompt: (prompt: InteractionPromptPosition | null) => void;
+  private readonly droppedItemArt = new Map<string, Phaser.GameObjects.Image>();
   private readonly combatAudio = createCombatAudio();
   private readonly zombieArt = new Map<string, {
     sprite: Phaser.GameObjects.Sprite;
@@ -32,13 +34,16 @@ export class HouseScene extends Phaser.Scene {
   private lastFrameAt: number | undefined;
   private timeSinceSurvivorDeath = 0;
 
-  constructor(coordinator: GameCoordinator, showSearchPrompt: (target: SearchPromptPosition | null) => void) {
+  constructor(coordinator: GameCoordinator, showInteractionPrompt: (prompt: InteractionPromptPosition | null) => void) {
     super('house-a');
     this.coordinator = coordinator;
-    this.showSearchPrompt = showSearchPrompt;
+    this.showInteractionPrompt = showInteractionPrompt;
   }
 
   preload() {
+    for (const kind of Object.keys(itemDefinitions)) {
+      this.load.image(kind, '/assets/items/' + kind + '.png');
+    }
     this.load.spritesheet('ground', groundUrl, { frameWidth: tileWidth, frameHeight: tileHeight });
     this.load.spritesheet('actors', actorsUrl, { frameWidth: 40, frameHeight: 58 });
     this.load.spritesheet('survivor-female', femaleSurvivorUrl, { frameWidth: 40, frameHeight: 58 });
@@ -81,16 +86,28 @@ export class HouseScene extends Phaser.Scene {
     this.scale.on(Phaser.Scale.Events.RESIZE, resize);
 
     let wasPaused = false;
-    const synchronizePause = () => {
+    let displayedDrops: GameState['droppedItems'] | undefined;
+    let displayedWeaponId = initialState.survivor.equippedWeaponId;
+    const synchronizeWorld = () => {
+      const state = this.coordinator.getState();
       const paused = this.coordinator.getPauseState().isPaused;
+      if (state.droppedItems !== displayedDrops) {
+        this.drawDroppedItems(state.droppedItems);
+        displayedDrops = state.droppedItems;
+      }
+      if (state.survivor.equippedWeaponId !== displayedWeaponId) {
+        if (paused) this.drawSurvivor(state);
+        displayedWeaponId = state.survivor.equippedWeaponId;
+      }
       if (paused === wasPaused) return;
       wasPaused = paused;
       this.lastFrameAt = undefined;
       camera.setLerp(paused ? 0 : .14);
-      if (paused) this.showSearchPrompt(null);
+      if (paused) this.showInteractionPrompt(null);
     };
-    const unsubscribe = this.coordinator.subscribe(synchronizePause);
-    synchronizePause();
+    this.droppedItemArt.clear();
+    const unsubscribe = this.coordinator.subscribe(synchronizeWorld);
+    synchronizeWorld();
     const { canvas } = this.game;
     canvas.addEventListener('pointerdown', this.onWorldPress);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -114,7 +131,7 @@ export class HouseScene extends Phaser.Scene {
     this.drawSurvivor(state);
     this.drawZombies(state);
     this.drawOcclusion(state, Math.min(1, elapsed / 70));
-    this.drawSearchPrompt();
+    this.drawInteractionPrompt();
   }
 
   private onWorldPress = (event: PointerEvent) => {
@@ -128,19 +145,35 @@ export class HouseScene extends Phaser.Scene {
     if (this.coordinator.startBatSwing(unproject(point))) this.combatAudio.swing();
   };
 
-  private drawSearchPrompt() {
-    const target = this.coordinator.getSearchTarget();
+  private drawInteractionPrompt() {
+    const target = this.coordinator.getInteractionTarget();
     if (!target) {
-      this.showSearchPrompt(null);
+      this.showInteractionPrompt(null);
       return;
     }
-    const point = project({ x: target.x + target.width / 2, y: target.y + target.height / 2 });
+    const point = project(target.position);
     const camera = this.cameras.main;
-    this.showSearchPrompt({
-      id: target.name,
-      x: Phaser.Math.Clamp((point.x - camera.worldView.x) * camera.zoom, 54, camera.width - 54),
-      y: Phaser.Math.Clamp((point.y - 37 - camera.worldView.y) * camera.zoom, 36, camera.height),
+    const offset = target.kind === 'container' ? 37 : 13;
+    this.showInteractionPrompt({
+      target,
+      x: (point.x - camera.worldView.x) * camera.zoom,
+      y: Phaser.Math.Clamp((point.y - offset - camera.worldView.y) * camera.zoom, 36, camera.height),
     });
+  }
+
+  private drawDroppedItems(drops: GameState['droppedItems']) {
+    const present = new Set(drops.map(({ item }) => item.id));
+    for (const [id, art] of this.droppedItemArt) {
+      if (present.has(id)) continue;
+      art.destroy();
+      this.droppedItemArt.delete(id);
+    }
+    for (const { item, position } of drops) {
+      if (this.droppedItemArt.has(item.id)) continue;
+      const { x, y } = project(position);
+      const art = this.add.image(x, y, item.kind).setDepth(y + .06).setScale(.75, .56);
+      this.droppedItemArt.set(item.id, art);
+    }
   }
 
   private drawSurvivor({ survivor, activeTimeMs }: GameState) {

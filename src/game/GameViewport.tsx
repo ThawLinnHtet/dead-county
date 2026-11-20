@@ -1,28 +1,40 @@
 import { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
 import { HouseScene } from './HouseScene';
-import type { GameCoordinator } from './gameCoordinator';
+import type { GameCoordinator, InteractionTarget } from './gameCoordinator';
+import { itemDefinitions } from './items';
 
 const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight']);
 
 export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) {
   const host = useRef<HTMLDivElement>(null);
-  const searchPrompt = useRef<HTMLDivElement>(null);
+  const interactionPrompt = useRef<HTMLDivElement>(null);
+  const interactionLabel = useRef<HTMLSpanElement>(null);
+  const pickupFeedback = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     const parent = host.current;
-    const prompt = searchPrompt.current;
-    if (!parent || !prompt) return;
+    const prompt = interactionPrompt.current;
+    const label = interactionLabel.current;
+    const feedback = pickupFeedback.current;
+    if (!parent || !prompt || !label || !feedback) return;
 
     const heldKeys = new Set<string>();
-    let displayedSearchId: string | null = null;
-    const scene = new HouseScene(coordinator, (target) => {
-      displayedSearchId = target?.id ?? null;
+    let displayed: InteractionTarget | null = null;
+    let promptInset = 0;
+    const scene = new HouseScene(coordinator, (placement) => {
+      const target = placement?.target ?? null;
+      const changed = target?.id !== displayed?.id || target?.kind !== displayed?.kind;
+      displayed = target;
+      if (changed) feedback.textContent = '';
       prompt.hidden = target === null;
-      if (target) {
-        prompt.style.left = `${target.x}px`;
-        prompt.style.top = `${target.y}px`;
+      if (!placement || !target) return;
+      if (changed) {
+        label.textContent = target.kind === 'container' ? 'Search' : 'Pick up ' + itemDefinitions[target.item.kind].name;
+        promptInset = prompt.offsetWidth / 2 + 4;
       }
+      prompt.style.left = `clamp(${promptInset}px, ${placement.x}px, calc(100% - ${promptInset}px))`;
+      prompt.style.top = `${placement.y}px`;
     });
 
     function updateMovement() {
@@ -37,10 +49,18 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
       updateMovement();
     }
 
-    function onKeyDown(event: KeyboardEvent) {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
         || coordinator.getPauseState().isPaused) return;
-      if (event.code === 'KeyE' && displayedSearchId && coordinator.search(displayedSearchId)) {
+      if (event.code === 'KeyE' && displayed) {
+        const result = coordinator.interact(displayed);
+        if (result.status === 'inventory_full') {
+          feedback.textContent = 'Inventory full';
+        } else {
+          displayed = null;
+          prompt.hidden = true;
+          feedback.textContent = '';
+        }
         event.preventDefault();
         return;
       }
@@ -93,7 +113,8 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
 
   return (
     <div ref={host} className="game-viewport" role="region" aria-label="Dead County game world" tabIndex={-1}>
-      <div ref={searchPrompt} className="world-search-prompt" hidden><kbd>E</kbd> Search</div>
+      <div ref={interactionPrompt} className="world-interaction-prompt" hidden><kbd>E</kbd> <span ref={interactionLabel} /></div>
+      <p ref={pickupFeedback} className="world-pickup-feedback" role="status" />
     </div>
   );
 }

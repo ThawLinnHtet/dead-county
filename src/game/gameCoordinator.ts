@@ -3,8 +3,8 @@ import type { AttackState } from './combat.ts';
 import { canOccupy, contains, houses, survivorSpawn, unproject } from './world.ts';
 import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
-import { authoredStock, reachableContainers, seedContainers } from './items.ts';
-import type { ContainerContents, ContainerStock, ItemInstance } from './items.ts';
+import { authoredStock, findDropPosition, reachableContainers, reachableDrops, seedContainers } from './items.ts';
+import type { ContainerContents, ContainerStock, DroppedItem, ItemInstance } from './items.ts';
 import { createZombies } from './zombie.ts';
 import type { ZombieSpawn, ZombieState } from './zombie.ts';
 
@@ -29,6 +29,7 @@ export interface GameState {
   };
   readonly zombies: readonly ZombieState[];
   readonly containers: ContainerContents;
+  readonly droppedItems: readonly DroppedItem[];
   readonly occupiedHouseId: string | null;
   readonly activeTimeMs: number;
 }
@@ -39,6 +40,8 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   setMovement(screenDirection: WorldPoint, sprintHeld?: boolean): void;
   step(deltaMs: number): GameState;
   startBatSwing(target: WorldPoint): boolean;
+  getInteractionTarget(): InteractionTarget | null;
+  interact(displayed: InteractionTarget): InteractionResult;
   getSearchTarget(): MapObject | null;
   getOpenContainer(): MapObject | null;
   search(containerId: string): boolean;
@@ -46,7 +49,19 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   toggleInventory(): void;
   closeInventoryPanel(): void;
   toggleEquip(slot: number, itemId: string): boolean;
+  dropItem(slot: number, itemId: string): DropResult;
 }
+
+export type InteractionTarget =
+  | { kind: 'container'; id: string; position: WorldPoint; object: MapObject }
+  | { kind: 'drop'; id: string; position: WorldPoint; item: ItemInstance };
+
+type InteractionResult =
+  | { status: 'searched' }
+  | { status: 'picked_up'; slot: number }
+  | { status: 'inventory_full' | 'unavailable' };
+
+type DropResult = { status: 'dropped' | 'cannot_drop' | 'swing_in_progress' | 'unavailable' };
 
 type TransferResult =
   | { status: 'transferred'; slot: number }
@@ -127,6 +142,7 @@ export function createGameCoordinator({
     },
     zombies: zombies.map((zombie) => zombie.getState()),
     containers: seedContainers(containerStock),
+    droppedItems: [],
     occupiedHouseId: getHouseAt(position),
     activeTimeMs: 0,
   };
@@ -155,11 +171,60 @@ export function createGameCoordinator({
     return reachableContainers(state.survivor.position, state.occupiedHouseId, state.containers);
   }
 
-  function getSearchTarget() {
-    if (pause.getPauseState().isPaused || state.survivor.health <= 0) return null;
-    const targets = getReachableContainers().sort((first, second) =>
-      first.distance - second.distance || (first.object.name < second.object.name ? -1 : 1));
-    return targets[0]?.object ?? null;
+  function interactionCandidates(): { target: InteractionTarget; distance: number }[] {
+    if (pause.getPauseState().isPaused || state.survivor.health <= 0) return [];
+    return [
+      ...getReachableContainers().map(({ object, distance }) => ({
+        target: {
+          kind: 'container' as const,
+          id: object.name,
+          position: { x: object.x + object.width / 2, y: object.y + object.height / 2 },
+          object,
+        },
+        distance,
+      })),
+      ...reachableDrops(state.survivor.position, state.droppedItems).map(({ drop, distance }) => ({
+        target: { kind: 'drop' as const, id: drop.item.id, position: drop.position, item: drop.item },
+        distance,
+      })),
+    ];
+  }
+
+  function getInteractionTarget() {
+    const candidates = interactionCandidates();
+    candidates.sort((first, second) => {
+      const difference = first.distance - second.distance;
+      if (Math.abs(difference) > 1e-9) return difference;
+      if (first.target.kind !== second.target.kind) return first.target.kind === 'drop' ? -1 : 1;
+      if (first.target.id === second.target.id) return 0;
+      return first.target.id < second.target.id ? -1 : 1;
+    });
+    return candidates[0]?.target ?? null;
+  }
+
+  function interact(displayed: InteractionTarget): InteractionResult {
+    const target = interactionCandidates().find(({ target }) =>
+      target.kind === displayed.kind && target.id === displayed.id)?.target;
+    if (!target) return { status: 'unavailable' };
+
+    if (target.kind === 'container') {
+      openContainer = target.object;
+      pause.setForegroundPanel('loot');
+      return { status: 'searched' };
+    }
+
+    const slot = state.survivor.inventory.indexOf(null);
+    if (slot < 0) return { status: 'inventory_full' };
+
+    const inventory = [...state.survivor.inventory];
+    inventory[slot] = target.item;
+    state = {
+      ...state,
+      survivor: { ...state.survivor, inventory },
+      droppedItems: state.droppedItems.filter(({ item }) => item.id !== target.id),
+    };
+    notify();
+    return { status: 'picked_up', slot };
   }
 
   function closeInventoryPanel() {
@@ -283,14 +348,16 @@ export function createGameCoordinator({
       notify();
       return true;
     },
-    getSearchTarget,
+    getInteractionTarget,
+    interact,
+    getSearchTarget() {
+      const target = getInteractionTarget();
+      return target?.kind === 'container' ? target.object : null;
+    },
     getOpenContainer: () => openContainer,
     search(containerId) {
-      const target = getSearchTarget();
-      if (!target || target.name !== containerId) return false;
-      openContainer = target;
-      pause.setForegroundPanel('loot');
-      return true;
+      const target = getInteractionTarget();
+      return target?.kind === 'container' && target.id === containerId && interact(target).status === 'searched';
     },
     transferItem(containerId, itemId) {
       if (!isInventoryAvailable() || openContainer?.name !== containerId
@@ -320,11 +387,34 @@ export function createGameCoordinator({
     closeInventoryPanel,
     toggleEquip(slot, itemId) {
       const item = state.survivor.inventory[slot];
-      if (!isInventoryAvailable() || !item || item.id !== itemId || item.kind !== 'baseball_bat') return false;
+      if (!isInventoryAvailable() || state.survivor.attack || !item || item.id !== itemId || item.kind !== 'baseball_bat') return false;
       const equippedWeaponId = state.survivor.equippedWeaponId === itemId ? null : itemId;
       state = { ...state, survivor: { ...state.survivor, equippedWeaponId } };
       notify();
       return true;
+    },
+    dropItem(slot, itemId) {
+      const { survivor } = state;
+      const item = survivor.inventory[slot];
+      if (!isInventoryAvailable() || !item || item.id !== itemId) return { status: 'unavailable' };
+      if (survivor.attack && survivor.equippedWeaponId === itemId) return { status: 'swing_in_progress' };
+
+      const position = findDropPosition(survivor.position, state.droppedItems);
+      if (!position) return { status: 'cannot_drop' };
+
+      const inventory = [...survivor.inventory];
+      inventory[slot] = null;
+      state = {
+        ...state,
+        survivor: {
+          ...survivor,
+          inventory,
+          equippedWeaponId: survivor.equippedWeaponId === itemId ? null : survivor.equippedWeaponId,
+        },
+        droppedItems: [...state.droppedItems, { item, position }],
+      };
+      notify();
+      return { status: 'dropped' };
     },
   };
 }
