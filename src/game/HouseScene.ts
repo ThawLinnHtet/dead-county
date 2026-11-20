@@ -8,15 +8,14 @@ import type { GameCoordinator, GameState } from './gameCoordinator';
 import groundUrl from './maps/ground.png';
 import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, zombieSpawn } from './world';
 
-const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD']);
 const outsideTerrainTiles = 7;
 
 export class HouseScene extends Phaser.Scene {
   private readonly coordinator: GameCoordinator;
-  private readonly heldKeys = new Set<string>();
   private survivor!: Phaser.GameObjects.Sprite;
   private shadow!: Phaser.GameObjects.Ellipse;
   private building!: ReturnType<typeof drawHouse>;
+  private lastFrameAt: number | undefined;
 
   constructor(coordinator: GameCoordinator) {
     super('house-a');
@@ -30,6 +29,7 @@ export class HouseScene extends Phaser.Scene {
   }
 
   create() {
+    this.lastFrameAt = undefined;
     for (let y = -outsideTerrainTiles; y < mapHeight + outsideTerrainTiles; y += 1) {
       for (let x = -outsideTerrainTiles; x < mapWidth + outsideTerrainTiles; x += 1) {
         const { x: worldX, y: worldY } = project({ x, y });
@@ -64,24 +64,30 @@ export class HouseScene extends Phaser.Scene {
     camera.startFollow(this.survivor, true, .14, .14, 0, 28);
     this.scale.on(Phaser.Scale.Events.RESIZE, resize);
 
-    const keyboard = this.input.keyboard;
-    keyboard?.addCapture(['W', 'A', 'S', 'D']);
-    keyboard?.on('keydown', this.onKeyDown);
-    keyboard?.on('keyup', this.onKeyUp);
-    this.game.events.on(Phaser.Core.Events.BLUR, this.clearMovement);
-    this.game.events.on(Phaser.Core.Events.HIDDEN, this.clearMovement);
+    let wasPaused = false;
+    const synchronizePause = () => {
+      const paused = this.coordinator.getPauseState().isPaused;
+      if (paused === wasPaused) return;
+      wasPaused = paused;
+      this.lastFrameAt = undefined;
+      camera.setLerp(paused ? 0 : .14);
+    };
+    const unsubscribe = this.coordinator.subscribe(synchronizePause);
+    synchronizePause();
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      keyboard?.off('keydown', this.onKeyDown);
-      keyboard?.off('keyup', this.onKeyUp);
-      this.game.events.off(Phaser.Core.Events.BLUR, this.clearMovement);
-      this.game.events.off(Phaser.Core.Events.HIDDEN, this.clearMovement);
+      unsubscribe();
       this.scale.off(Phaser.Scale.Events.RESIZE, resize);
-      this.clearMovement();
     });
   }
 
-  update(_time: number, delta: number) {
-    const elapsed = Math.min(delta, 50);
+  update(time: number) {
+    if (this.coordinator.getPauseState().isPaused) return;
+
+    const lastFrameAt = this.lastFrameAt;
+    this.lastFrameAt = time;
+    if (lastFrameAt === undefined) return;
+
+    const elapsed = Math.min(Math.max(time - lastFrameAt, 0), 50);
     const state = this.coordinator.step(elapsed);
     this.drawSurvivor(state);
     this.drawOcclusion(state, Math.min(1, elapsed / 70));
@@ -109,27 +115,5 @@ export class HouseScene extends Phaser.Scene {
     const next = Phaser.Math.Linear(art.alpha, target, blend);
     const alpha = Math.abs(next - target) < .01 ? target : next;
     art.setVisible(alpha > 0).setAlpha(alpha);
-  }
-
-  private readonly onKeyDown = (event: KeyboardEvent) => {
-    if (event.repeat || !movementKeys.has(event.code) || event.altKey || event.ctrlKey || event.metaKey) return;
-    this.heldKeys.add(event.code);
-    this.updateMovement();
-  };
-
-  private readonly onKeyUp = (event: KeyboardEvent) => {
-    if (this.heldKeys.delete(event.code)) this.updateMovement();
-  };
-
-  private readonly clearMovement = () => {
-    this.heldKeys.clear();
-    this.updateMovement();
-  };
-
-  private updateMovement() {
-    this.coordinator.setMovement({
-      x: Number(this.heldKeys.has('KeyD')) - Number(this.heldKeys.has('KeyA')),
-      y: Number(this.heldKeys.has('KeyS')) - Number(this.heldKeys.has('KeyW')),
-    });
   }
 }
