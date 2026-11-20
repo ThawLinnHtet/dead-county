@@ -5,6 +5,15 @@ import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
 
+test('existing schema-one saves can omit the navigation retry state', () => {
+  const original = captureRun(createGameCoordinator());
+  const zombies = original.zombies.map(({ navigationRetry: _retry, ...zombie }) => zombie);
+  const raw = { ...saveRecord(1, null), run: { id: runId, snapshot: { ...original, zombies } } };
+  const read = inspectSaveRecord(structuredClone(raw));
+  assert.equal(read.kind, 'ready');
+  assert.ok(restoreGameCoordinator(read.run.snapshot).getState().zombies.every((actor) => actor.navigationRetry === null));
+});
+
 test('a committed snapshot restores changed survivor, inventory, loot, drops and fractional time', () => {
   const original = createGameCoordinator({ characterId: 'survivor_female', position: { x: 11.9, y: 9.15 } });
   const starter = original.getInteractionTarget();

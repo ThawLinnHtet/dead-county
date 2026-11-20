@@ -155,7 +155,7 @@ function makeGameCoordinator({
   containerStock = authoredStock,
 }: FreshRunOptions, snapshot?: GameSnapshot): GameCoordinator {
   if (!canOccupy(position)) throw new Error('The survivor must start on walkable ground');
-  const zombies = snapshot ? restoreZombies(snapshot.zombies) : createZombies(zombieSpawns);
+  const zombies = snapshot ? restoreZombies(snapshot.zombies, snapshot.activeTimeMs) : createZombies(zombieSpawns);
   let state: GameState = {
     survivor: snapshot ? { ...snapshot.survivor, gait: 'idle' } : {
       characterId,
@@ -184,6 +184,7 @@ function makeGameCoordinator({
   let shiftHeld = false;
   let sprintRequested = false;
   let openContainer: MapObject | null = null;
+  let wasPaused = false;
   const listeners = new Set<() => void>();
 
   function notify() {
@@ -200,6 +201,10 @@ function makeGameCoordinator({
     const { isPaused, foregroundPanel } = pause.getPauseState();
     if (foregroundPanel !== 'loot') openContainer = null;
     if (isPaused) clearMovement();
+    else if (wasPaused) {
+      for (const zombie of zombies) zombie.rebuildNavigation(state.activeTimeMs);
+    }
+    wasPaused = isPaused;
     notify();
   });
 

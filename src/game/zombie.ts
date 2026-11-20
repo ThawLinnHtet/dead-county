@@ -22,6 +22,8 @@ type ZombieBehavior = {
   readonly graceRemainingMs: number | null;
 };
 
+type NavigationRetry = { readonly failures: number; readonly nextAttemptAtMs: number };
+
 export interface ZombieState {
   readonly id: string;
   readonly appearanceId: ZombieAppearanceId;
@@ -34,6 +36,7 @@ export interface ZombieState {
   readonly moving: boolean;
   readonly behavior: ZombieBehavior;
   readonly randomState: number;
+  readonly navigationRetry: NavigationRetry | null;
 }
 
 export const zombieConfig = {
@@ -67,7 +70,7 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
   for (const character of id) randomState = Math.imul(randomState ^ character.charCodeAt(0), 16777619) >>> 0;
 
   randomState = restored?.randomState ?? randomState;
-  let state: ZombieState = restored ?? {
+  let state: ZombieState = restored ? { ...restored, navigationRetry: restored.navigationRetry ?? null } : {
     id,
     appearanceId,
     position: { ...position },
@@ -79,11 +82,12 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
     moving: false,
     behavior: { kind: 'wander', destination: { ...destination }, idleRemainingMs: 0 },
     randomState,
+    navigationRetry: null,
   };
   let path: WorldPoint[] = [];
-  let nextPathTimeMs = 0;
+  let nextPathTimeMs = state.navigationRetry?.nextAttemptAtMs ?? 0;
   let pathGoal: WorldPoint | undefined;
-  let pathFailures = 0;
+  let pathFailures = state.navigationRetry?.failures ?? 0;
 
   function resetPath() {
     path = [];
@@ -146,8 +150,7 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
   function waypoints(goal: WorldPoint, activeTimeMs: number): WorldPoint[] {
     const { position } = state;
     if (canTraverse(position, goal)) {
-      path = [];
-      pathFailures = 0;
+      resetPath();
       return [goal];
     }
 
@@ -162,8 +165,29 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
     return path;
   }
 
+  function movementGoal(behavior: ZombieBehavior) {
+    return behavior.kind === 'chase' ? behavior.lastKnownPosition : behavior.destination;
+  }
+
+  function rebuildNavigation(activeTimeMs: number) {
+    path = [];
+    pathGoal = undefined;
+    // A failed search retries on its original active step.
+    if (pathFailures > 0) return;
+
+    nextPathTimeMs = 0;
+    const goal = movementGoal(state.behavior);
+    if (state.health <= 0 || !goal || canTraverse(state.position, goal)) return;
+    const route = findRoute(state.position, goal);
+    if (route) {
+      path = route;
+      pathGoal = goal;
+      nextPathTimeMs = activeTimeMs + zombieConfig.pathRefreshMs;
+    }
+  }
+
   function move(behavior: ZombieBehavior, deltaMs: number, activeTimeMs: number): ZombieState {
-    const goal = behavior.kind === 'chase' ? behavior.lastKnownPosition : behavior.destination;
+    const goal = movementGoal(behavior);
     const motion = { position: state.position, walkDistance: state.walkDistance, facingLeft: state.facingLeft };
     if (goal) {
       const route = waypoints(goal, activeTimeMs);
@@ -199,6 +223,7 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
 
   return {
     getState: () => state,
+    rebuildNavigation,
     receiveBatHit(origin: WorldPoint, activeTimeMs: number) {
       const { position } = state;
       const direction = aimFrom(origin, position);
@@ -214,6 +239,7 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
         attack: health > 0 ? state.attack : null,
         position: displaced && canTraverse(position, displaced) ? displaced : position,
         moving: health > 0 && state.moving,
+        navigationRetry: null,
       };
       resetPath();
     },
@@ -237,6 +263,8 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
         const facing = aimFrom(state.position, survivor) ?? (state.facingLeft ? { x: 0, y: 1 } : { x: 1, y: 0 });
         state = { ...state, attack: beginAttack(facing, zombieConfig.bite), facingLeft: facing.x < facing.y, moving: false };
       }
+      const navigationRetry = pathFailures > 0 ? { failures: pathFailures, nextAttemptAtMs: nextPathTimeMs } : null;
+      if (navigationRetry !== state.navigationRetry) state = { ...state, navigationRetry };
       return state;
     },
   };
@@ -246,8 +274,12 @@ export function createZombies(spawns: readonly ZombieSpawn[] = zombieSpawns) {
   return spawns.map((spawn) => createZombie(spawn));
 }
 
-export function restoreZombies(zombies: readonly ZombieState[]) {
-  return zombies.map((zombie) => createZombie({
-    id: zombie.id, position: zombie.position, destination: zombie.position, appearanceId: zombie.appearanceId,
-  }, zombie));
+export function restoreZombies(zombies: readonly ZombieState[], activeTimeMs: number) {
+  return zombies.map((zombie) => {
+    const actor = createZombie({
+      id: zombie.id, position: zombie.position, destination: zombie.position, appearanceId: zombie.appearanceId,
+    }, zombie);
+    actor.rebuildNavigation(activeTimeMs);
+    return actor;
+  });
 }

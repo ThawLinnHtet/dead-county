@@ -69,6 +69,11 @@ function attack(value: unknown, timing: Pick<typeof batConfig, 'windupMs' | 'con
   }
 }
 
+function isNavigationRetry(value: unknown, activeTimeMs: number) {
+  return value === undefined || value === null || (isRecord(value) && isRevision(value.failures)
+    && value.failures > 0 && finite(value.nextAttemptAtMs, 0, activeTimeMs + zombieConfig.pathRefreshMs));
+}
+
 function isZombie(value: unknown, index: number, activeTimeMs: number) {
   const authored = zombieSpawns[index];
   if (!authored || !isRecord(value) || value.id !== authored.id || value.appearanceId !== authored.appearanceId
@@ -76,7 +81,8 @@ function isZombie(value: unknown, index: number, activeTimeMs: number) {
       || !(value.lastBatHitAtMs === null || finite(value.lastBatHitAtMs, 0, activeTimeMs))
       || !attack(value.attack, zombieConfig.bite) || (value.health === 0 && value.attack !== null)
       || !finite(value.walkDistance) || typeof value.facingLeft !== 'boolean' || typeof value.moving !== 'boolean'
-      || !isRevision(value.randomState) || value.randomState > 0xffffffff || !isRecord(value.behavior)) return false;
+      || !isRevision(value.randomState) || value.randomState > 0xffffffff || !isRecord(value.behavior)
+      || !isNavigationRetry(value.navigationRetry, activeTimeMs)) return false;
 
   const behavior = value.behavior;
   if (behavior.kind === 'chase') {
@@ -178,11 +184,12 @@ function copySnapshot({ survivor, containers, droppedItems, zombies, activeTimeM
     zombies: zombies.map((zombie) => {
       const {
         id, appearanceId, position, health, lastBatHitAtMs, attack, facingLeft,
-        walkDistance, moving, randomState, behavior,
+        walkDistance, moving, randomState, behavior, navigationRetry,
       } = zombie;
       return {
         id, appearanceId, position: copyPoint(position), health, lastBatHitAtMs, attack: copyAttack(attack),
         facingLeft, walkDistance, moving, randomState,
+        navigationRetry: navigationRetry ? { failures: navigationRetry.failures, nextAttemptAtMs: navigationRetry.nextAttemptAtMs } : null,
         behavior: behavior.kind === 'chase'
           ? { kind: 'chase', lastKnownPosition: copyPoint(behavior.lastKnownPosition), graceRemainingMs: behavior.graceRemainingMs }
           : { kind: 'wander', destination: behavior.destination ? copyPoint(behavior.destination) : null, idleRemainingMs: behavior.idleRemainingMs },
