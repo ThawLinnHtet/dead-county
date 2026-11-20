@@ -1,9 +1,18 @@
 import { useState, useSyncExternalStore } from 'react';
 import { GameViewport } from './game/GameViewport';
 import { createGameCoordinator } from './game/gameCoordinator';
+import type { GameCoordinator } from './game/gameCoordinator';
+import { RunMenus } from './ui/RunMenus';
 
 export function App() {
-  const [coordinator] = useState(() => createGameCoordinator());
+  const [coordinator, setCoordinator] = useState<GameCoordinator | null>(null);
+
+  return coordinator
+    ? <PlaySession coordinator={coordinator} />
+    : <RunMenus onStartRun={(characterId) => setCoordinator(createGameCoordinator({ characterId }))} />;
+}
+
+function PlaySession({ coordinator }: { coordinator: GameCoordinator }) {
   const occupiedHouseId = useSyncExternalStore(
     coordinator.subscribe,
     () => coordinator.getState().occupiedHouseId,

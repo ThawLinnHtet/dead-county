@@ -91,3 +91,23 @@ test('occupancy stays stable while the survivor shuffles across the threshold', 
   assert.equal(game.step(47).occupiedHouseId, null);
   assert.equal(game.step(25).occupiedHouseId, 'house_a');
 });
+
+test('both survivors start with the same fresh state and retain their selected identity in play', () => {
+  for (const characterId of ['survivor_male', 'survivor_female'] as const) {
+    const game = createGameCoordinator({ characterId });
+    const { survivor, occupiedHouseId, activeTimeMs } = game.getState();
+
+    assert.equal(survivor.characterId, characterId);
+    assert.equal(occupiedHouseId, 'house_a');
+    assert.equal(activeTimeMs, 0);
+    assert.equal(survivor.health, 100);
+    assert.equal(survivor.stamina, 100);
+    assert.equal(survivor.hunger, 0);
+    assert.equal(survivor.thirst, 0);
+    assert.deepEqual(survivor.inventory, Array(12).fill(null));
+    assert.equal(survivor.equippedWeaponId, null);
+
+    game.setMovement({ x: 1, y: 1 });
+    assert.equal(game.step(100).survivor.characterId, characterId);
+  }
+});

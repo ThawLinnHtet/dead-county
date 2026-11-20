@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import actorsUrl from './actors.png';
+import femaleSurvivorUrl from './survivor-female.png';
 import { drawFurniture } from './drawFurniture';
 import { drawHouse } from './drawHouse';
 import { drawScenery } from './drawScenery';
@@ -25,6 +26,7 @@ export class HouseScene extends Phaser.Scene {
   preload() {
     this.load.spritesheet('ground', groundUrl, { frameWidth: tileWidth, frameHeight: tileHeight });
     this.load.spritesheet('actors', actorsUrl, { frameWidth: 40, frameHeight: 58 });
+    this.load.spritesheet('survivor-female', femaleSurvivorUrl, { frameWidth: 40, frameHeight: 58 });
   }
 
   create() {
@@ -46,8 +48,9 @@ export class HouseScene extends Phaser.Scene {
     this.add.sprite(zombie.x, zombie.y, 'actors', 7).setOrigin(.5, 56 / 58).setDepth(zombie.y).setFlipX(true);
 
     this.shadow = this.add.ellipse(0, 0, 24, 8, 0x282721, .45);
-    this.survivor = this.add.sprite(0, 0, 'actors', 0).setOrigin(.5, 56 / 58);
     const initialState = this.coordinator.getState();
+    const survivorTexture = initialState.survivor.characterId === 'survivor_female' ? 'survivor-female' : 'actors';
+    this.survivor = this.add.sprite(0, 0, survivorTexture, 0).setOrigin(.5, 56 / 58);
     this.drawSurvivor(initialState);
     this.drawOcclusion(initialState, 1);
 

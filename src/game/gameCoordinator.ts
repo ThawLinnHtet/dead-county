@@ -1,9 +1,18 @@
 import { canOccupy, contains, houses, survivorSpawn, unproject } from './world.ts';
 import type { WorldPoint } from './world.ts';
 
+export type SurvivorId = 'survivor_male' | 'survivor_female';
+
 export interface GameState {
   readonly survivor: {
+    readonly characterId: SurvivorId;
     readonly position: WorldPoint;
+    readonly health: number;
+    readonly stamina: number;
+    readonly hunger: number;
+    readonly thirst: number;
+    readonly inventory: readonly (string | null)[];
+    readonly equippedWeaponId: string | null;
     readonly gait: 'idle' | 'walk';
     readonly facingLeft: boolean;
     readonly walkDistance: number;
@@ -42,11 +51,26 @@ function move(position: WorldPoint, dx: number, dy: number): WorldPoint {
   return alternatives.find((candidate) => canOccupy(candidate)) ?? position;
 }
 
-export function createGameCoordinator({ position = survivorSpawn }: { position?: WorldPoint } = {}): GameCoordinator {
+export function createGameCoordinator({
+  position = survivorSpawn,
+  characterId = 'survivor_male',
+}: { position?: WorldPoint; characterId?: SurvivorId } = {}): GameCoordinator {
   if (!canOccupy(position)) throw new Error('The survivor must start on walkable ground');
 
   let state: GameState = {
-    survivor: { position: { ...position }, gait: 'idle', facingLeft: false, walkDistance: 0 },
+    survivor: {
+      characterId,
+      position: { ...position },
+      health: 100,
+      stamina: 100,
+      hunger: 0,
+      thirst: 0,
+      inventory: Array<string | null>(12).fill(null),
+      equippedWeaponId: null,
+      gait: 'idle',
+      facingLeft: false,
+      walkDistance: 0,
+    },
     occupiedHouseId: getHouseAt(position),
     activeTimeMs: 0,
   };
@@ -74,6 +98,7 @@ export function createGameCoordinator({ position = survivorSpawn }: { position?:
     const facingLeft = Math.abs(screenX) > 0.0001 ? screenX < 0 : previous.facingLeft;
     state = {
       survivor: {
+        ...previous,
         position: nextPosition,
         gait: traveled > 0 ? 'walk' : 'idle',
         facingLeft,
