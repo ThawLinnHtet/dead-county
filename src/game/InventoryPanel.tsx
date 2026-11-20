@@ -24,6 +24,7 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
     (container && coordinator.getState().containers[container.name]) || noItems);
   const inventory = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.inventory);
   const equippedId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.equippedWeaponId);
+  const swinging = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.attack !== null);
   const slot = selection?.source === 'inventory' ? inventory.findIndex((item) => item?.id === selection.id) : -1;
   const selected = selection?.source === 'loot' ? items.find((item) => item.id === selection.id) : inventory[slot];
   const definition = selected && itemDefinitions[selected.kind];
@@ -55,6 +56,22 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
     if (!next || !coordinator.getState().survivor.inventory.includes(null)) close.current?.focus();
   }
 
+  function drop() {
+    if (selection?.source !== 'inventory') return;
+    const result = coordinator.dropItem(slot, selection.id);
+    if (result.status === 'dropped') {
+      setSelection(null);
+      setMessage('');
+      close.current?.focus();
+    } else if (result.status === 'cannot_drop') {
+      setMessage('Cannot drop item here.');
+    } else if (result.status === 'swing_in_progress') {
+      setMessage('Finish your swing first.');
+    } else {
+      setMessage('Item unavailable');
+    }
+  }
+
   function keepFocusInside(event: KeyboardEvent<HTMLDialogElement>) {
     if (event.key !== 'Tab') return;
     const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')];
@@ -66,6 +83,8 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
     }
   }
 
+  const equipLocked = swinging && selected?.kind === 'baseball_bat';
+  const dropLocked = swinging && selected?.id === equippedId;
   const title = container ? containerNames[container.type] ?? 'Container' : 'Inventory';
   const actionReason = selected?.kind === 'water_bottle' ? 'Thirst is already at zero.'
     : selected?.kind === 'canned_food' ? 'Hunger is already at zero.' : 'Health is full.';
@@ -110,7 +129,7 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
               >
                 <span aria-hidden="true">→</span> Transfer
               </button>
-              <p className="inventory-feedback" role="status">{full && items.length ? 'Inventory full' : message}</p>
+              <p className="inventory-feedback" role="status">{full && items.length ? 'Inventory full' : selection?.source === 'loot' ? message : ''}</p>
             </div>
           </>
         )}
@@ -146,16 +165,41 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
                 <div><h2>{definition.name}</h2><p>{definition.category}</p></div>
               </div>
               <p>{definition.description}</p>
-              {selection?.source === 'inventory' && (selected.kind === 'baseball_bat' ? (
-                <button className="inventory-action" type="button" onClick={() => coordinator.toggleEquip(slot, selected.id)}>
-                  {selected.id === equippedId ? 'Unequip' : 'Equip'}
-                </button>
-              ) : (
+              {selection?.source === 'inventory' && (
                 <>
-                  <button className="inventory-action" type="button" disabled aria-describedby="inventory-use-reason">Use</button>
-                  <p id="inventory-use-reason" className="inventory-muted">{actionReason}</p>
+                  <div className="inventory-actions">
+                    {selected.kind === 'baseball_bat' ? (
+                      <button
+                        className="inventory-action"
+                        type="button"
+                        disabled={equipLocked}
+                        aria-describedby={equipLocked ? 'inventory-swing-reason' : undefined}
+                        onClick={() => coordinator.toggleEquip(slot, selected.id)}
+                      >
+                        {selected.id === equippedId ? 'Unequip' : 'Equip'}
+                      </button>
+                    ) : (
+                      <button className="inventory-action" type="button" disabled aria-describedby="inventory-use-reason">Use</button>
+                    )}
+                    <button
+                      className="inventory-action inventory-action--drop"
+                      type="button"
+                      disabled={dropLocked}
+                      aria-describedby={dropLocked ? 'inventory-swing-reason' : undefined}
+                      onClick={drop}
+                    >
+                      Drop
+                    </button>
+                  </div>
+                  {selected.kind !== 'baseball_bat' && (
+                    <p id="inventory-use-reason" className="inventory-muted">{actionReason}</p>
+                  )}
+                  {equipLocked && (
+                    <p id="inventory-swing-reason" className="inventory-muted">Finish your swing first.</p>
+                  )}
+                  <p className="inventory-drop-feedback" role="status">{message}</p>
                 </>
-              ))}
+              )}
             </>
           ) : (
             <><h2>Item Details</h2><p className="inventory-muted">Select an item to view its details.</p></>
