@@ -4,13 +4,14 @@ import type { GameCoordinator, SurvivorId } from '../game/gameCoordinator';
 import { SaveFailure } from './SaveRepository';
 import type { SaveRepository } from './SaveRepository';
 import { captureRun } from './runSnapshot';
-import type { SavedRun, SaveRead } from './runSnapshot';
+import type { DamagedSaveGuard, SavedRun, SaveRead } from './runSnapshot';
 
 type Availability = SaveRead['kind'] | 'checking' | 'blocked' | 'read_failed' | 'unavailable';
 type MenuDestination = 'main' | 'survivors';
 type OwnedSlot = { owner: string; revision: number };
 type RunSession = OwnedSlot & { id: string; coordinator: GameCoordinator };
 type Replacement = OwnedSlot & { characterId: SurvivorId };
+type DamagedReplacement = { owner: string; guard: DamagedSaveGuard; stage: 'confirm' | 'choose' };
 export type DeathSaveStatus = 'pending' | 'failed' | 'complete';
 type PauseFeedback = { kind: 'saved' | 'error' | 'progress'; message: string };
 type SaveAttempt = { exit: boolean; revision: number; run: SavedRun };
@@ -31,7 +32,7 @@ function availabilityMessage(status: Availability, unsupportedReason?: 'newer_sc
       ? 'This save uses a newer save format. Open it with a compatible version of Dead County.'
       : 'This save uses a different neighborhood version. Open it with a compatible version of Dead County.';
     case 'damaged': return 'The local save is damaged.';
-    case 'read_failed': return storageMessage;
+    case 'read_failed': return 'Could not read the local save.';
     case 'unavailable': return 'Local run ownership is unavailable in this browser.';
     case 'empty':
     case 'dead': return 'No run available to continue';
@@ -52,6 +53,7 @@ export function useRunFlow(repository: SaveRepository) {
   const [pending, setPending] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
   const [replacement, setReplacement] = useState<Replacement | null>(null);
+  const [damagedReplacement, setDamagedReplacement] = useState<DamagedReplacement | null>(null);
   const [pauseFeedback, setPauseFeedback] = useState<PauseFeedback | null>(null);
   const [pauseRecovery, setPauseRecovery] = useState<PauseRecovery | null>(null);
   const [deathStatus, setDeathStatus] = useState<DeathSaveStatus>('pending');
@@ -59,6 +61,7 @@ export function useRunFlow(repository: SaveRepository) {
   const operation = useRef(false);
   const currentRun = useRef<RunSession | null>(null);
   const pendingReplacement = useRef<Replacement | null>(null);
+  const pendingDamage = useRef<DamagedReplacement | null>(null);
   const deathWrite = useRef<Promise<boolean> | null>(null);
   const deathCommitted = useRef(false);
 
@@ -75,11 +78,11 @@ export function useRunFlow(repository: SaveRepository) {
   }
 
   useEffect(() => {
-    if (session || pending || replacement) return;
+    if (session || pending || replacement || damagedReplacement || availability.status === 'read_failed') return;
     let current = true;
     let checking = false;
     async function refresh() {
-      if (checking || operation.current || currentRun.current || pendingReplacement.current) return;
+      if (checking || operation.current || currentRun.current || pendingReplacement.current || pendingDamage.current) return;
       checking = true;
       try {
         const { status, reason } = await checkAvailability();
@@ -103,7 +106,7 @@ export function useRunFlow(repository: SaveRepository) {
       window.removeEventListener('focus', refresh);
       unsubscribe();
     };
-  }, [repository, session, pending, replacement]);
+  }, [repository, session, pending, replacement, damagedReplacement, availability.status]);
 
   function beginMenuCommand() {
     if (operation.current || currentRun.current) return false;
@@ -144,8 +147,8 @@ export function useRunFlow(repository: SaveRepository) {
     enterRun({ owner: slot.owner, revision, id, coordinator });
   }
 
-  async function withAcquiredSlot(action: (owner: string, save: SaveRead) => Promise<void>) {
-    if (pendingReplacement.current || !beginMenuCommand()) return;
+  async function withAcquiredSlot(action?: (owner: string, save: SaveRead) => Promise<void>) {
+    if (pendingReplacement.current || pendingDamage.current || !beginMenuCommand()) return;
     let owner: string | null = null;
     let blocked = false;
     try {
@@ -156,7 +159,7 @@ export function useRunFlow(repository: SaveRepository) {
       }
       const saved = await repository.read(owner);
       displayAvailability(saved.kind, saved.kind === 'unsupported' ? saved.reason : undefined);
-      await action(owner, saved);
+      await action?.(owner, saved);
     } catch (error) {
       const kind = failureKind(error);
       if (kind === 'ownership') blocked = true;
@@ -164,13 +167,19 @@ export function useRunFlow(repository: SaveRepository) {
       else if (kind === 'read') displayAvailability('read_failed');
       else setMenuError(kind === 'conflict' ? revisionMessage : storageMessage);
     } finally {
-      if (owner && !currentRun.current && !pendingReplacement.current) await repository.release(owner);
+      if (owner && !currentRun.current && !pendingReplacement.current && !pendingDamage.current) {
+        await repository.release(owner);
+      }
       if (blocked) displayAvailability('blocked');
       finishMenuCommand();
     }
   }
 
   async function requestStart(characterId: SurvivorId) {
+    if (pendingDamage.current?.stage === 'choose') {
+      await startDamagedReplacement(pendingDamage.current, characterId);
+      return;
+    }
     await withAcquiredSlot(async (owner, saved) => {
       if (saved.kind === 'ready') {
         const confirmation = { owner, revision: saved.revision, characterId };
@@ -180,6 +189,61 @@ export function useRunFlow(repository: SaveRepository) {
         await makeNewRun({ owner, revision: saved.revision }, characterId);
       }
     });
+  }
+
+  async function retryMenuRead() {
+    if (availability.status === 'read_failed') await withAcquiredSlot();
+  }
+
+  function setDamage(choice: DamagedReplacement | null) {
+    pendingDamage.current = choice;
+    setDamagedReplacement(choice);
+  }
+
+  async function requestDamagedReplacement() {
+    if (availability.status !== 'damaged') return;
+    await withAcquiredSlot(async (owner, saved) => {
+      if (saved.kind === 'damaged' && saved.guard) setDamage({ owner, guard: saved.guard, stage: 'confirm' });
+    });
+  }
+
+  async function decideDamagedReplacement(confirm: boolean) {
+    const choice = pendingDamage.current;
+    if (!choice || operation.current) return;
+    if (confirm && choice.stage === 'confirm') {
+      setDamage({ ...choice, stage: 'choose' });
+    } else if (!confirm && beginMenuCommand()) {
+      try {
+        await repository.release(choice.owner);
+      } finally {
+        setDamage(null);
+        finishMenuCommand();
+      }
+    }
+  }
+
+  async function startDamagedReplacement(choice: DamagedReplacement, characterId: SurvivorId) {
+    if (!beginMenuCommand()) return;
+    let lost = false;
+    try {
+      const coordinator = createGameCoordinator({ characterId });
+      const id = crypto.randomUUID();
+      const revision = await repository.replaceDamaged(choice.owner, choice.guard, { id, snapshot: captureRun(coordinator) });
+      enterRun({ owner: choice.owner, revision, id, coordinator });
+    } catch (error) {
+      const kind = failureKind(error);
+      lost = kind === 'ownership';
+      if (!lost) {
+        setMenuError(kind === 'conflict'
+          ? 'The local save changed. Review it before replacing it.'
+          : 'Could not replace the damaged save. The existing record was preserved.');
+      }
+    } finally {
+      if (!currentRun.current) await repository.release(choice.owner);
+      if (lost) displayAvailability('blocked');
+      setDamage(null);
+      finishMenuCommand();
+    }
   }
 
   async function continueRun() {
@@ -372,8 +436,9 @@ export function useRunFlow(repository: SaveRepository) {
   }
 
   return {
-    session, destination, availability, pending, menuError, replacement, pauseFeedback, deathStatus,
+    session, destination, availability, pending, menuError, replacement, damagedReplacement, pauseFeedback, deathStatus,
     requestStart, continueRun, finishReplacement, save, leaveDeadRun, recoverPause,
+    retryMenuRead, requestDamagedReplacement, decideDamagedReplacement,
     pauseRecovery: pauseRecovery && {
       label: pauseRecovery.kind === 'reload' ? 'Reload latest save'
         : pauseRecovery.kind === 'retry_read' ? 'Try reading again' : 'Try again',
