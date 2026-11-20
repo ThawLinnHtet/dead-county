@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { useCallback, useId, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import type { CSSProperties } from 'react';
 import type { GameCoordinator } from './gameCoordinator';
 import { getNeighborhoodMapImage, houseNames } from './drawNeighborhoodMap';
@@ -7,10 +7,20 @@ import type { WorldPoint } from './world';
 import './neighborhoodMap.css';
 
 const minimapSpan = 20;
+const markerRefreshMs = 50;
 
 function useSurvivorMarker(coordinator: GameCoordinator) {
-  const position = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.position);
-  const facing = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.facing);
+  const subscribe = useCallback((notify: () => void) => {
+    let lastRefresh = -Infinity;
+    return coordinator.subscribe(() => {
+      const now = coordinator.getState().activeTimeMs;
+      if (now - lastRefresh < markerRefreshMs && !coordinator.getPauseState().isPaused) return;
+      lastRefresh = now;
+      notify();
+    });
+  }, [coordinator]);
+  const position = useSyncExternalStore(subscribe, () => coordinator.getState().survivor.position);
+  const facing = useSyncExternalStore(subscribe, () => coordinator.getState().survivor.facing);
   return { position, facing };
 }
 
