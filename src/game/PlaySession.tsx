@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { GameViewport } from './GameViewport';
 import type { GameCoordinator } from './gameCoordinator';
+import { InventoryPanel } from './InventoryPanel';
 import { PauseMenu } from './PauseMenu';
 import type { PauseSaveActions } from './PauseMenu';
 
@@ -31,7 +32,12 @@ export function PlaySession({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.code === 'KeyI') {
+        if (!event.repeat) coordinator.toggleInventory();
+        return;
+      }
+      if (event.key !== 'Escape') return;
       event.preventDefault();
       if (!event.repeat) coordinator.handleEscape();
     };
@@ -61,15 +67,20 @@ export function PlaySession({
             {formatSurvivalTime(survivalSeconds)}
           </time>
         </div>
-        <aside className="movement-hint" aria-label="Move with W, A, S and D">
+        <aside className="movement-hint" aria-label="Gameplay controls">
           <span className="movement-keys" aria-hidden="true">
             <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
           </span>
           <span>Move</span>
+          <span className="movement-keys" aria-hidden="true"><kbd>I</kbd></span>
+          <span>Inventory</span>
         </aside>
       </div>
       {pause.foregroundPanel === 'pause' && (
         <PauseMenu pause={pause} onResume={coordinator.resume} saveActions={pauseSaveActions} />
+      )}
+      {(pause.foregroundPanel === 'inventory' || (pause.foregroundPanel === 'loot' && coordinator.getOpenContainer())) && (
+        <InventoryPanel coordinator={coordinator} />
       )}
     </main>
   );

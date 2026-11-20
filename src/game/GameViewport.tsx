@@ -7,12 +7,23 @@ const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'Shif
 
 export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) {
   const host = useRef<HTMLDivElement>(null);
+  const searchPrompt = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const parent = host.current;
-    if (!parent) return;
+    const prompt = searchPrompt.current;
+    if (!parent || !prompt) return;
 
     const heldKeys = new Set<string>();
+    let displayedSearchId: string | null = null;
+    const scene = new HouseScene(coordinator, (target) => {
+      displayedSearchId = target?.id ?? null;
+      prompt.hidden = target === null;
+      if (target) {
+        prompt.style.left = `${target.x}px`;
+        prompt.style.top = `${target.y}px`;
+      }
+    });
 
     function updateMovement() {
       coordinator.setMovement({
@@ -28,7 +39,12 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.repeat || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
-        || !movementKeys.has(event.code) || coordinator.getPauseState().isPaused) return;
+        || coordinator.getPauseState().isPaused) return;
+      if (event.code === 'KeyE' && displayedSearchId && coordinator.search(displayedSearchId)) {
+        event.preventDefault();
+        return;
+      }
+      if (!movementKeys.has(event.code)) return;
       heldKeys.add(event.code);
       updateMovement();
     }
@@ -51,7 +67,7 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
         parent,
         backgroundColor: '#3f4934',
         pixelArt: true,
-        scene: new HouseScene(coordinator),
+        scene,
         scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
         input: { keyboard: false, windowEvents: false },
         callbacks: {
@@ -75,5 +91,9 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
     };
   }, [coordinator]);
 
-  return <div ref={host} className="game-viewport" role="region" aria-label="Dead County game world" tabIndex={-1} />;
+  return (
+    <div ref={host} className="game-viewport" role="region" aria-label="Dead County game world" tabIndex={-1}>
+      <div ref={searchPrompt} className="world-search-prompt" hidden><kbd>E</kbd> Search</div>
+    </div>
+  );
 }

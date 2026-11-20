@@ -1,6 +1,8 @@
 import { canOccupy, contains, houses, survivorSpawn, unproject } from './world.ts';
-import type { WorldPoint } from './world.ts';
+import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
+import { authoredStock, reachableContainers, seedContainers } from './items.ts';
+import type { ContainerContents, ContainerStock, ItemInstance } from './items.ts';
 import { createZombies } from './zombie.ts';
 import type { ZombieSpawn, ZombieState } from './zombie.ts';
 
@@ -14,13 +16,14 @@ export interface GameState {
     readonly stamina: number;
     readonly hunger: number;
     readonly thirst: number;
-    readonly inventory: readonly (string | null)[];
+    readonly inventory: readonly (ItemInstance | null)[];
     readonly equippedWeaponId: string | null;
     readonly gait: 'idle' | 'walk' | 'sprint';
     readonly facingLeft: boolean;
     readonly walkDistance: number;
   };
   readonly zombies: readonly ZombieState[];
+  readonly containers: ContainerContents;
   readonly occupiedHouseId: string | null;
   readonly activeTimeMs: number;
 }
@@ -30,7 +33,18 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   subscribe(listener: () => void): () => void;
   setMovement(screenDirection: WorldPoint, sprintHeld?: boolean): void;
   step(deltaMs: number): GameState;
+  getSearchTarget(): MapObject | null;
+  getOpenContainer(): MapObject | null;
+  search(containerId: string): boolean;
+  transferItem(containerId: string, itemId: string): TransferResult;
+  toggleInventory(): void;
+  closeInventoryPanel(): void;
+  toggleEquip(slot: number, itemId: string): boolean;
 }
+
+type TransferResult =
+  | { status: 'transferred'; slot: number }
+  | { status: 'inventory_full' | 'unavailable' };
 
 const movementConfig = {
   walkSpeed: 2.55,
@@ -79,7 +93,13 @@ export function createGameCoordinator({
   position = survivorSpawn,
   characterId = 'survivor_male',
   zombieSpawns,
-}: { position?: WorldPoint; characterId?: SurvivorId; zombieSpawns?: readonly ZombieSpawn[] } = {}): GameCoordinator {
+  containerStock = authoredStock,
+}: {
+  position?: WorldPoint;
+  characterId?: SurvivorId;
+  zombieSpawns?: readonly ZombieSpawn[];
+  containerStock?: ContainerStock;
+} = {}): GameCoordinator {
   if (!canOccupy(position)) throw new Error('The survivor must start on walkable ground');
   const zombies = createZombies(zombieSpawns);
   let state: GameState = {
@@ -90,19 +110,21 @@ export function createGameCoordinator({
       stamina: 100,
       hunger: 0,
       thirst: 0,
-      inventory: Array<string | null>(12).fill(null),
+      inventory: Array<ItemInstance | null>(12).fill(null),
       equippedWeaponId: null,
       gait: 'idle',
       facingLeft: false,
       walkDistance: 0,
     },
     zombies: zombies.map((zombie) => zombie.getState()),
+    containers: seedContainers(containerStock),
     occupiedHouseId: getHouseAt(position),
     activeTimeMs: 0,
   };
   let direction: WorldPoint = { x: 0, y: 0 };
   let shiftHeld = false;
   let sprintRequested = false;
+  let openContainer: MapObject | null = null;
   const listeners = new Set<() => void>();
 
   function notify() {
@@ -110,13 +132,39 @@ export function createGameCoordinator({
   }
 
   const pause = createGamePause(() => {
-    if (pause.getPauseState().isPaused) {
+    const { isPaused, foregroundPanel } = pause.getPauseState();
+    if (foregroundPanel !== 'loot') openContainer = null;
+    if (isPaused) {
       direction = { x: 0, y: 0 };
       shiftHeld = false;
       sprintRequested = false;
     }
     notify();
   });
+
+  function getReachableContainers() {
+    return reachableContainers(state.survivor.position, state.occupiedHouseId, state.containers);
+  }
+
+  function getSearchTarget() {
+    if (pause.getPauseState().isPaused || state.survivor.health <= 0) return null;
+    const targets = getReachableContainers().sort((first, second) =>
+      first.distance - second.distance || (first.object.name < second.object.name ? -1 : 1));
+    return targets[0]?.object ?? null;
+  }
+
+  function closeInventoryPanel() {
+    const { foregroundPanel, savePending, tabHidden } = pause.getPauseState();
+    if (!savePending && !tabHidden && (foregroundPanel === 'inventory' || foregroundPanel === 'loot')) {
+      pause.setForegroundPanel(null);
+    }
+  }
+
+  function isInventoryAvailable() {
+    const { foregroundPanel, tabHidden, savePending } = pause.getPauseState();
+    return state.survivor.health > 0 && !tabHidden && !savePending
+      && (foregroundPanel === 'inventory' || (foregroundPanel === 'loot' && openContainer !== null));
+  }
 
   function step(deltaMs: number): GameState {
     if (pause.getPauseState().isPaused) return state;
@@ -141,6 +189,7 @@ export function createGameCoordinator({
     const facingLeft = Math.abs(screenX) > 0.0001 ? screenX < 0 : previous.facingLeft;
     const activeTimeMs = state.activeTimeMs + deltaMs;
     state = {
+      ...state,
       survivor: {
         ...previous,
         position: nextPosition,
@@ -176,5 +225,48 @@ export function createGameCoordinator({
       shiftHeld = sprintHeld;
     },
     step,
+    getSearchTarget,
+    getOpenContainer: () => openContainer,
+    search(containerId) {
+      const target = getSearchTarget();
+      if (!target || target.name !== containerId) return false;
+      openContainer = target;
+      pause.setForegroundPanel('loot');
+      return true;
+    },
+    transferItem(containerId, itemId) {
+      if (!isInventoryAvailable() || openContainer?.name !== containerId
+          || !getReachableContainers().some(({ object }) => object.name === containerId)) {
+        return { status: 'unavailable' };
+      }
+      const items = state.containers[containerId]!;
+      const itemIndex = items.findIndex((item) => item.id === itemId);
+      if (itemIndex < 0) return { status: 'unavailable' };
+      const slot = state.survivor.inventory.indexOf(null);
+      if (slot < 0) return { status: 'inventory_full' };
+
+      const inventory = [...state.survivor.inventory];
+      inventory[slot] = items[itemIndex]!;
+      state = {
+        ...state,
+        survivor: { ...state.survivor, inventory },
+        containers: { ...state.containers, [containerId]: [...items.slice(0, itemIndex), ...items.slice(itemIndex + 1)] },
+      };
+      notify();
+      return { status: 'transferred', slot };
+    },
+    toggleInventory() {
+      if (pause.getPauseState().foregroundPanel === 'inventory') closeInventoryPanel();
+      else if (state.survivor.health > 0) pause.setForegroundPanel('inventory');
+    },
+    closeInventoryPanel,
+    toggleEquip(slot, itemId) {
+      const item = state.survivor.inventory[slot];
+      if (!isInventoryAvailable() || !item || item.id !== itemId || item.kind !== 'baseball_bat') return false;
+      const equippedWeaponId = state.survivor.equippedWeaponId === itemId ? null : itemId;
+      state = { ...state, survivor: { ...state.survivor, equippedWeaponId } };
+      notify();
+      return true;
+    },
   };
 }

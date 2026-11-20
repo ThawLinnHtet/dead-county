@@ -9,9 +9,11 @@ import groundUrl from './maps/ground.png';
 import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth } from './world';
 
 const outsideTerrainTiles = 7;
+type SearchPromptPosition = { id: string; x: number; y: number };
 
 export class HouseScene extends Phaser.Scene {
   private readonly coordinator: GameCoordinator;
+  private readonly showSearchPrompt: (target: SearchPromptPosition | null) => void;
   private readonly zombieArt = new Map<string, {
     sprite: Phaser.GameObjects.Sprite;
     shadow: Phaser.GameObjects.Ellipse;
@@ -21,9 +23,10 @@ export class HouseScene extends Phaser.Scene {
   private building!: ReturnType<typeof drawHouse>;
   private lastFrameAt: number | undefined;
 
-  constructor(coordinator: GameCoordinator) {
+  constructor(coordinator: GameCoordinator, showSearchPrompt: (target: SearchPromptPosition | null) => void) {
     super('house-a');
     this.coordinator = coordinator;
+    this.showSearchPrompt = showSearchPrompt;
   }
 
   preload() {
@@ -73,6 +76,7 @@ export class HouseScene extends Phaser.Scene {
       wasPaused = paused;
       this.lastFrameAt = undefined;
       camera.setLerp(paused ? 0 : .14);
+      if (paused) this.showSearchPrompt(null);
     };
     const unsubscribe = this.coordinator.subscribe(synchronizePause);
     synchronizePause();
@@ -94,6 +98,22 @@ export class HouseScene extends Phaser.Scene {
     this.drawSurvivor(state);
     this.drawZombies(state);
     this.drawOcclusion(state, Math.min(1, elapsed / 70));
+    this.drawSearchPrompt();
+  }
+
+  private drawSearchPrompt() {
+    const target = this.coordinator.getSearchTarget();
+    if (!target) {
+      this.showSearchPrompt(null);
+      return;
+    }
+    const point = project({ x: target.x + target.width / 2, y: target.y + target.height / 2 });
+    const camera = this.cameras.main;
+    this.showSearchPrompt({
+      id: target.name,
+      x: Phaser.Math.Clamp((point.x - camera.worldView.x) * camera.zoom, 54, camera.width - 54),
+      y: Phaser.Math.Clamp((point.y - 37 - camera.worldView.y) * camera.zoom, 36, camera.height),
+    });
   }
 
   private drawSurvivor({ survivor }: GameState) {
