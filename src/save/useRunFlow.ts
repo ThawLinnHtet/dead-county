@@ -12,7 +12,7 @@ type OwnedSlot = { owner: string; revision: number };
 type RunSession = OwnedSlot & { id: string; coordinator: GameCoordinator };
 type Replacement = OwnedSlot & { characterId: SurvivorId };
 type DamagedReplacement = { owner: string; guard: DamagedSaveGuard; stage: 'confirm' | 'choose' };
-export type DeathSaveStatus = 'pending' | 'failed' | 'complete';
+export type DeathSaveStatus = 'pending' | 'failed' | 'conflict' | 'read_failed' | 'verified' | 'complete';
 type PauseFeedback = { kind: 'saved' | 'error' | 'progress'; message: string };
 type SaveAttempt = { exit: boolean; revision: number; run: SavedRun };
 type PauseRecovery =
@@ -391,12 +391,13 @@ export function useRunFlow(repository: SaveRepository) {
         setDeathStatus('complete');
         return true;
       } catch (error) {
-        if (failureKind(error) === 'ownership') {
+        const kind = failureKind(error);
+        if (kind === 'ownership') {
           await loseRunOwnership(active);
           return false;
         }
         // Keep the lease and the terminal run in view until invalidation commits.
-        setDeathStatus('failed');
+        setDeathStatus(kind === 'conflict' || kind === 'invalid' ? 'conflict' : 'failed');
         return false;
       } finally {
         deathWrite.current = null;
@@ -424,7 +425,8 @@ export function useRunFlow(repository: SaveRepository) {
 
   async function leaveDeadRun(next: MenuDestination) {
     const active = currentRun.current;
-    if (!active?.coordinator.getState().gameOver || operation.current) return;
+    if (!active?.coordinator.getState().gameOver || operation.current
+        || deathStatus === 'conflict' || deathStatus === 'read_failed') return;
     operation.current = true;
     try {
       if (!await invalidateDeath(active)) return;
@@ -435,9 +437,34 @@ export function useRunFlow(repository: SaveRepository) {
     }
   }
 
+  async function recoverDeadSave() {
+    const active = currentRun.current;
+    if (!active?.coordinator.getState().gameOver || operation.current
+        || (deathStatus !== 'conflict' && deathStatus !== 'read_failed')) return;
+    operation.current = true;
+    setDeathStatus('pending');
+    try {
+      const saved = await repository.read(active.owner);
+      if (saved.kind === 'ready' && saved.run.id === active.id) {
+        // A separate, explicit Game Over action may now close this same run.
+        active.revision = saved.revision;
+        setDeathStatus('verified');
+      } else {
+        await repository.release(active.owner);
+        leaveRun('main');
+        displayAvailability(saved.kind, saved.kind === 'unsupported' ? saved.reason : undefined);
+      }
+    } catch (error) {
+      if (failureKind(error) === 'ownership') await loseRunOwnership(active);
+      else setDeathStatus('read_failed');
+    } finally {
+      operation.current = false;
+    }
+  }
+
   return {
     session, destination, availability, pending, menuError, replacement, damagedReplacement, pauseFeedback, deathStatus,
-    requestStart, continueRun, finishReplacement, save, leaveDeadRun, recoverPause,
+    requestStart, continueRun, finishReplacement, save, leaveDeadRun, recoverPause, recoverDeadSave,
     retryMenuRead, requestDamagedReplacement, decideDamagedReplacement,
     pauseRecovery: pauseRecovery && {
       label: pauseRecovery.kind === 'reload' ? 'Reload latest save'

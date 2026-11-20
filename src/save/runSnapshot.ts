@@ -2,7 +2,7 @@ import type { GameCoordinator, GameSnapshot } from '../game/gameCoordinator.ts';
 import { batConfig } from '../game/combat.ts';
 import { authoredStock, seedContainers } from '../game/items.ts';
 import type { ItemInstance } from '../game/items.ts';
-import { canOccupy, mapHeight, mapWidth, zombieSpawns } from '../game/world.ts';
+import { canOccupy, houses, mapHeight, mapWidth, zombieSpawns } from '../game/world.ts';
 import type { WorldPoint } from '../game/world.ts';
 import { zombieConfig } from '../game/zombie.ts';
 
@@ -91,7 +91,7 @@ function isZombie(value: unknown, index: number, activeTimeMs: number) {
   const behavior = value.behavior;
   if (behavior.kind === 'chase') {
     return point(behavior.lastKnownPosition)
-      && (behavior.graceRemainingMs === null || finite(behavior.graceRemainingMs, Number.MIN_VALUE, zombieConfig.pursuitGraceMs));
+      && (behavior.graceRemainingMs === null || finite(behavior.graceRemainingMs, 0, zombieConfig.pursuitGraceMs));
   }
   return behavior.kind === 'wander' && (behavior.destination === null || point(behavior.destination))
     && finite(behavior.idleRemainingMs, 0, zombieConfig.wanderIdleMs);
@@ -99,7 +99,9 @@ function isZombie(value: unknown, index: number, activeTimeMs: number) {
 
 function isAliveSnapshot(value: unknown): value is GameSnapshot {
   if (!isRecord(value) || !finite(value.activeTimeMs) || !isRecord(value.survivor)) return false;
-  const { survivor, containers, droppedItems, zombies, activeTimeMs } = value;
+  const { survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId } = value;
+  if (occupiedHouseId !== undefined && occupiedHouseId !== null
+      && !houses.some(({ name }) => name === occupiedHouseId)) return false;
   if (!(survivor.characterId === 'survivor_male' || survivor.characterId === 'survivor_female')
       || !point(survivor.position) || !canOccupy(survivor.position)
       || !finite(survivor.health, Number.MIN_VALUE, 100) || !finite(survivor.stamina, 0, 100) || !finite(survivor.hunger, 0, 100) || !finite(survivor.thirst, 0, 100)
@@ -141,9 +143,9 @@ function isAliveSnapshot(value: unknown): value is GameSnapshot {
 }
 
 export function captureRun(coordinator: GameCoordinator): GameSnapshot {
-  const { survivor, containers, droppedItems, zombies, activeTimeMs } = coordinator.getState();
+  const { survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId } = coordinator.getState();
   const { gait: _gait, ...savedSurvivor } = survivor;
-  return { survivor: savedSurvivor, containers, droppedItems, zombies, activeTimeMs };
+  return { survivor: savedSurvivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId };
 }
 
 export function saveRecord(revision: number, run: SavedRun | null): SaveRecord {
@@ -169,13 +171,14 @@ function copyAttack(attack: GameSnapshot['survivor']['attack']): GameSnapshot['s
   return { phase, direction: copyPoint(direction), remainingMs, damageApplied };
 }
 
-function copySnapshot({ survivor, containers, droppedItems, zombies, activeTimeMs }: GameSnapshot): GameSnapshot {
+function copySnapshot({ survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId }: GameSnapshot): GameSnapshot {
   const {
     characterId, position, health, stamina, hunger, thirst, inventory, equippedWeaponId,
     facing, facingLeft, attack, lastBiteAtMs, walkDistance,
   } = survivor;
   return {
     activeTimeMs,
+    occupiedHouseId,
     survivor: {
       characterId, position: copyPoint(position), health, stamina, hunger, thirst,
       inventory: inventory.map((item) => item ? copyItem(item) : null), equippedWeaponId,

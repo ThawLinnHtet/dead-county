@@ -5,6 +5,32 @@ import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
 
+test('Continue preserves the logical house at either side of a doorway threshold', () => {
+  const game = createGameCoordinator({ position: { x: 13.99, y: 7.7 } });
+  game.setMovement({ x: 2, y: 1 });
+  const crossing = game.step(25);
+  assert.equal(crossing.occupiedHouseId, 'house_a');
+  assert.ok(crossing.survivor.position.x > 14);
+  const read = inspectSaveRecord(structuredClone(saveRecord(2, { id: runId, snapshot: captureRun(game) })));
+  assert.equal(read.kind, 'ready');
+  assert.equal(restoreGameCoordinator(read.run.snapshot).getState().occupiedHouseId, crossing.occupiedHouseId);
+});
+
+test('Continue accepts a zero-duration pursuit and lets it expire on the next active step', () => {
+  const raw = captureRun(createGameCoordinator({ position: { x: 4, y: 2 } }));
+  const [first, ...other] = raw.zombies;
+  const snapshot = {
+    ...raw,
+    zombies: [{
+      ...first!, behavior: { kind: 'chase' as const, lastKnownPosition: first!.position, graceRemainingMs: 0 },
+    }, ...other],
+  };
+  const read = inspectSaveRecord(structuredClone(saveRecord(2, { id: runId, snapshot })));
+  assert.equal(read.kind, 'ready');
+  const continued = restoreGameCoordinator(read.run.snapshot);
+  assert.equal(continued.step(16).zombies[0]!.behavior.kind, 'wander');
+});
+
 test('existing schema-one saves can omit the navigation retry state', () => {
   const original = captureRun(createGameCoordinator());
   const zombies = original.zombies.map(({ navigationRetry: _retry, ...zombie }) => zombie);

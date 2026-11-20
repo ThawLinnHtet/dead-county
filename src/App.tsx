@@ -14,6 +14,7 @@ export function App() {
         onNewRun={() => { void flow.leaveDeadRun('survivors'); }}
         onMainMenu={() => { void flow.leaveDeadRun('main'); }}
         deathSaveStatus={flow.deathStatus}
+        onRecoverDeathSave={() => { void flow.recoverDeadSave(); }}
         pauseSaveActions={{
           saveGame: () => { void flow.save(false); },
           saveAndExit: () => { void flow.save(true); },

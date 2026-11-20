@@ -37,3 +37,8 @@ test('a newer schema is identified before malformed or unknown gameplay fields',
   const record = { key: slotKey, schemaVersion: saveSchemaVersion + 1, revision: 'other format', run: new Map() };
   assert.deepEqual(inspectSaveRecord(record), { kind: 'unsupported', reason: 'newer_schema' });
 });
+
+test('oversized text makes an exact record comparison unverifiable', () => {
+  const oversized = 'x'.repeat(8 * 1024 * 1024);
+  assert.equal(sameStoredRecord({ field: oversized }, { field: oversized }), undefined);
+});

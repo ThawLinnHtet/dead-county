@@ -13,6 +13,10 @@ const kitchenB = { x: 26.55, y: 13.75 };
 const kitchenC = { x: 41.05, y: 14.55 };
 const streetC = { x: 41.05, y: 18.51 };
 const cabinetC = 'house_c_kitchen_cabinet';
+// Cross south of the parked car to avoid the zombies on the near sidewalk.
+const houseCApproach = [
+  { x: 28, y: 18.51 }, { x: 28, y: 24 }, { x: 41.05, y: 24 }, streetC, kitchenC,
+];
 
 function walkTo(
   game: GameCoordinator, destination: WorldPoint, options: { sprint?: boolean; observe?: () => void } = {},
@@ -39,7 +43,7 @@ test('a survivor can walk from House A into House C, transfer its essentials, an
   const water = game.getState().containers[cabinetC]?.find(({ kind }) => kind === 'water_bottle');
   assert.ok(food && water, 'the fresh kitchen cabinet contains food and water');
 
-  for (const point of [{ x: 10.7, y: 8.3 }, porchA, junction, sidewalkB, streetC, kitchenC]) {
+  for (const point of [{ x: 10.7, y: 8.3 }, porchA, junction, sidewalkB, ...houseCApproach]) {
     walkTo(game, point);
   }
 
@@ -93,7 +97,7 @@ test('ordinary pursuit creates more encounter pressure at House C than at House 
   const starterApproach = [{ x: 10.7, y: 8.3 }, porchA];
   const direct = [...starterApproach, { x: 23.85, y: 10.2 }, { x: 24.1, y: 16.3 }, { x: 26.55, y: 16.95 }, kitchenB];
   const detour = [...starterApproach, junction, sidewalkB, kitchenB];
-  const risk = [...starterApproach, junction, sidewalkB, streetC, kitchenC];
+  const risk = [...starterApproach, junction, sidewalkB, ...houseCApproach];
 
   function observeRoute(route: readonly WorldPoint[]) {
     const game = createGameCoordinator();

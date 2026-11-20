@@ -71,9 +71,10 @@ test('both fresh survivors can walk to the kitchen, transfer its guaranteed can 
       assert.equal(supplied.survivor.health, 100);
     }
     game.closeInventoryPanel();
-    walkTo(game, porchB);
+    // Circle around the incoming zombie before crossing the open doorway.
+    for (const point of [{ x: 25, y: 13.75 }, { x: 25, y: 14.4 }, { x: 27, y: 16.95 }]) walkTo(game, point);
     assert.equal(game.getState().occupiedHouseId, null);
-    assert.ok(game.getState().survivor.health > 0);
+    assert.equal(game.getState().survivor.health, 100);
   }
 });
 

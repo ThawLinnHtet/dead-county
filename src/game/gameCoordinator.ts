@@ -1,6 +1,6 @@
 import { advanceAttack, aimFrom, batConfig, beginAttack, selectBatTarget } from './combat.ts';
 import type { AttackState } from './combat.ts';
-import { canOccupy, contains, houses, survivorSpawn, unproject } from './world.ts';
+import { actorRadius, canOccupy, contains, houses, survivorSpawn, unproject } from './world.ts';
 import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
 import { authoredStock, findDropPosition, itemDefinitions, reachableContainers, reachableDrops, seedContainers } from './items.ts';
@@ -47,6 +47,7 @@ export interface GameSnapshot {
   readonly containers: ContainerContents;
   readonly droppedItems: GameState['droppedItems'];
   readonly activeTimeMs: number;
+  readonly occupiedHouseId?: string | null;
 }
 
 export interface GameCoordinator extends ReturnType<typeof createGamePause> {
@@ -106,9 +107,9 @@ function getHouseAt(position: WorldPoint, previous?: string | null): string | nu
   )?.name ?? null;
 }
 
-function move(position: WorldPoint, dx: number, dy: number): WorldPoint {
+function move(position: WorldPoint, dx: number, dy: number, canStep: (from: WorldPoint, to: WorldPoint) => boolean): WorldPoint {
   const straight = { x: position.x + dx, y: position.y + dy };
-  if (canOccupy(straight)) return straight;
+  if (canStep(position, straight)) return straight;
 
   // Sliding follows the walkable axis at a wall instead of catching its corners.
   const horizontal = { x: straight.x, y: position.y };
@@ -116,17 +117,17 @@ function move(position: WorldPoint, dx: number, dy: number): WorldPoint {
   const alternatives = Math.abs(dx) >= Math.abs(dy)
     ? [horizontal, vertical]
     : [vertical, horizontal];
-  return alternatives.find((candidate) => canOccupy(candidate)) ?? position;
+  return alternatives.find((candidate) => canStep(position, candidate)) ?? position;
 }
 
-function travel(position: WorldPoint, direction: WorldPoint, distance: number): WorldPoint {
+function travel(position: WorldPoint, direction: WorldPoint, distance: number, canStep: (from: WorldPoint, to: WorldPoint) => boolean): WorldPoint {
   if (distance <= 0 || (!direction.x && !direction.y)) return position;
 
   const steps = Math.ceil(distance / movementConfig.maxCollisionStep);
   const stride = distance / steps;
   let current = position;
   for (let index = 0; index < steps; index += 1) {
-    const next = move(current, direction.x * stride, direction.y * stride);
+    const next = move(current, direction.x * stride, direction.y * stride, canStep);
     if (next.x === current.x && next.y === current.y) break;
     current = next;
   }
@@ -176,7 +177,7 @@ function makeGameCoordinator({
     zombies: zombies.map((zombie) => zombie.getState()),
     containers: snapshot?.containers ?? seedContainers(containerStock),
     droppedItems: snapshot?.droppedItems ?? [],
-    occupiedHouseId: getHouseAt(position),
+    occupiedHouseId: getHouseAt(position, snapshot?.occupiedHouseId),
     activeTimeMs: snapshot?.activeTimeMs ?? 0,
     gameOver: null,
   };
@@ -299,13 +300,19 @@ function makeGameCoordinator({
 
   function advanceSimulation({ elapsedMs: deltaMs, needDamage, hunger, thirst }: ReturnType<typeof getSurvivalStep>) {
     const previous = state.survivor;
+    const livingBodies = state.zombies.filter(({ health }) => health > 0);
+    const canStep = (from: WorldPoint, to: WorldPoint) => canOccupy(to) && livingBodies.every(({ position }) => {
+      const separation = Math.hypot(to.x - position.x, to.y - position.y);
+      // Permit separation if a saved or approaching body already overlaps the survivor.
+      return separation >= 2 * actorRadius || separation > Math.hypot(from.x - position.x, from.y - position.y);
+    });
     const { walkSpeed, sprintSpeed, sprintDrainPerMs, staminaRecoveryPerMs } = movementConfig;
     const timeToExhaustion = previous.stamina / sprintDrainPerMs;
     const sprintMs = sprintRequested && !previous.attack ? Math.min(deltaMs, timeToExhaustion) : 0;
-    const sprintPosition = travel(previous.position, direction, sprintSpeed * sprintMs / 1000);
+    const sprintPosition = travel(previous.position, direction, sprintSpeed * sprintMs / 1000, canStep);
     const sprinting = sprintPosition !== previous.position;
     const stepSpeed = previous.attack ? batConfig.stepSpeed : walkSpeed;
-    const nextPosition = travel(sprintPosition, direction, stepSpeed * (deltaMs - sprintMs) / 1000);
+    const nextPosition = travel(sprintPosition, direction, stepSpeed * (deltaMs - sprintMs) / 1000, canStep);
 
     const exhausted = sprinting && sprintMs >= timeToExhaustion;
     const stamina = sprinting

@@ -4,18 +4,30 @@ export function sameStoredRecord(original: unknown, current: unknown): boolean |
   let entriesLeft = 50_000;
   let bytesLeft = 8 * 1024 * 1024;
 
+  function* ownKeys(value: object) {
+    for (const key in value) if (Object.hasOwn(value, key)) yield key;
+  }
+
+  function sameText(left: string, right: string) {
+    bytesLeft -= 2 * (left.length + right.length);
+    if (bytesLeft < 0) throw new RangeError('Save comparison limit exceeded');
+    return left === right;
+  }
+
   function sameProperties(left: object, right: object) {
-    const leftKeys = Object.keys(left);
-    const rightKeys = Object.keys(right);
-    if (leftKeys.length !== rightKeys.length) return false;
-    if (leftKeys.length > entriesLeft) throw new RangeError('Save comparison limit exceeded');
+    const rightKeys = ownKeys(right);
     const a = left as Record<string, unknown>;
     const b = right as Record<string, unknown>;
-    return leftKeys.every((key, index) => key === rightKeys[index] && compare(a[key], b[key]));
+    for (const key of ownKeys(left)) {
+      const next = rightKeys.next();
+      if (next.done || !sameText(key, next.value) || !compare(a[key], b[key])) return false;
+    }
+    return rightKeys.next().done === true;
   }
 
   function compare(left: unknown, right: unknown): boolean {
     if (--entriesLeft < 0) throw new RangeError('Save comparison limit exceeded');
+    if (typeof left === 'string' && typeof right === 'string') return sameText(left, right);
     if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return Object.is(left, right);
     const prototype = Object.getPrototypeOf(left) as object | null;
     if (prototype !== Object.getPrototypeOf(right)) return false;
@@ -41,7 +53,7 @@ export function sameStoredRecord(original: unknown, current: unknown): boolean |
     }
     if (left instanceof Date && right instanceof Date) return Object.is(left.getTime(), right.getTime());
     if (left instanceof RegExp && right instanceof RegExp) {
-      return left.source === right.source && left.flags === right.flags && left.lastIndex === right.lastIndex;
+      return sameText(left.source, right.source) && left.flags === right.flags && left.lastIndex === right.lastIndex;
     }
     if (left instanceof Map && right instanceof Map) {
       if (left.size !== right.size) return false;

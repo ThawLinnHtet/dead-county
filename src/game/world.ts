@@ -74,7 +74,7 @@ export function unproject({ x, y }: WorldPoint): WorldPoint {
   return { x: x / tileWidth + y / tileHeight, y: y / tileHeight - x / tileWidth };
 }
 
-const actorRadius = 0.23;
+export const actorRadius = 0.23;
 
 export function canOccupy(position: WorldPoint, radius = actorRadius): boolean {
   const { x, y } = position;

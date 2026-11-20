@@ -2,6 +2,8 @@
 
 Dead County is an original single-player isometric survival game for desktop browsers. Choose a survivor, scavenge an abandoned neighborhood, and stay alive as supplies run low and zombies follow you through open doors.
 
+[Play Dead County](https://dead-county-eight.vercel.app/)
+
 ## Run locally
 
 Install Node.js 22.12 or later. Run these commands from the project directory.

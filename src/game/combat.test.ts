@@ -20,6 +20,17 @@ function equipBat(game: GameCoordinator) {
   game.closeInventoryPanel();
 }
 
+test('a living zombie physically blocks the survivor during its bite wind-up', () => {
+  const position = { x: 12.5, y: 9.15 };
+  const game = createGameCoordinator({ position: survivorPosition, zombieSpawns: [spawn('blocking-zombie', position)] });
+  game.step(1);
+  assert.equal(game.getState().zombies[0]!.attack?.phase, 'windup');
+  game.setMovement({ x: 2, y: 1 });
+  for (let tick = 0; tick < 25; tick += 1) game.step(16);
+  assert.equal(game.getState().survivor.health, 100);
+  assert.ok(game.getState().survivor.position.x <= position.x - .46);
+});
+
 test('the bat commits world aim and damages only the ordinal winner among equal targets', () => {
   const target = { x: 12.7, y: 9.15 };
   const zombies = [spawn('a-zombie', target), spawn('Z-zombie', target)];

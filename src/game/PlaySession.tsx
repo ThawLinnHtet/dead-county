@@ -17,12 +17,14 @@ export function PlaySession({
   onMainMenu,
   pauseSaveActions,
   deathSaveStatus,
+  onRecoverDeathSave,
 }: {
   coordinator: GameCoordinator;
   onNewRun: () => void;
   onMainMenu: () => void;
   pauseSaveActions?: PauseSaveActions;
   deathSaveStatus?: DeathSaveStatus;
+  onRecoverDeathSave?: () => void;
 }) {
   const foreground = useRef<HTMLDivElement>(null);
   const pause = useSyncExternalStore(coordinator.subscribe, coordinator.getPauseState);
@@ -76,7 +78,10 @@ export function PlaySession({
   }, [pause.isPaused, gameOver]);
 
   if (gameOver && revealedResult === gameOver) {
-    return <GameOverScreen result={gameOver} onNewRun={onNewRun} onMainMenu={onMainMenu} saveStatus={deathSaveStatus} />;
+    return (
+      <GameOverScreen result={gameOver} onNewRun={onNewRun} onMainMenu={onMainMenu}
+        saveStatus={deathSaveStatus} onRecoverSave={onRecoverDeathSave} />
+    );
   }
 
   return (
