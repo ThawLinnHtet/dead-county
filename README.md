@@ -33,6 +33,12 @@ House B has gray siding, a columned porch, and Canned Food in its kitchen cabine
 
 After exhaustion, release and press `Shift` again to sprint once Stamina has recovered. When you return to the game after switching tabs, choose **Resume** and press a movement key again.
 
+## Save and continue
+
+Open Pause and choose **Save Game** to commit progress and stay paused. **Save & Exit** returns to the Main Menu after the save commits. **Continue** loads the latest committed run from IndexedDB in the same browser profile.
+
+Only one tab can play the local run at a time. If another tab has it open, let that tab release the run, then select **Continue** yourself. Closing a tab unexpectedly keeps the latest committed save. A survivor's death ends that run and removes it from Continue.
+
 ## Check and build
 
 ```sh
