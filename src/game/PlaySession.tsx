@@ -1,0 +1,82 @@
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { GameViewport } from './GameViewport';
+import type { GameCoordinator } from './gameCoordinator';
+import { PauseMenu } from './PauseMenu';
+import type { PauseSaveActions } from './PauseMenu';
+
+export function PlaySession({
+  coordinator,
+  pauseSaveActions,
+}: {
+  coordinator: GameCoordinator;
+  pauseSaveActions?: PauseSaveActions;
+}) {
+  const foreground = useRef<HTMLDivElement>(null);
+  const pause = useSyncExternalStore(coordinator.subscribe, coordinator.getPauseState);
+  const occupiedHouseId = useSyncExternalStore(
+    coordinator.subscribe,
+    () => coordinator.getState().occupiedHouseId,
+  );
+  const survivalSeconds = useSyncExternalStore(
+    coordinator.subscribe,
+    () => Math.floor(coordinator.getState().activeTimeMs / 1000),
+  );
+
+  useLayoutEffect(() => {
+    const onVisibilityChange = () => coordinator.setTabHidden(document.hidden);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    onVisibilityChange();
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, [coordinator]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      event.preventDefault();
+      if (!event.repeat) coordinator.handleEscape();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [coordinator]);
+
+  useLayoutEffect(() => {
+    if (!pause.isPaused) {
+      const target = foreground.current?.querySelector('canvas')
+        ?? foreground.current?.querySelector<HTMLElement>('.game-viewport');
+      target?.focus({ preventScroll: true });
+    }
+  }, [pause.isPaused]);
+
+  return (
+    <main className="game-screen">
+      <div ref={foreground} inert={pause.isPaused}>
+        <GameViewport coordinator={coordinator} />
+        <header className="game-location">
+          <h1>Dead County</h1>
+          <p role="status">{occupiedHouseId === 'house_a' ? 'House A' : 'Neighborhood'}</p>
+        </header>
+        <div className="survival-clock">
+          <span>Survival Time</span>
+          <time role="timer" aria-label="Survival time" dateTime={`PT${survivalSeconds}S`}>
+            {formatSurvivalTime(survivalSeconds)}
+          </time>
+        </div>
+        <aside className="movement-hint" aria-label="Move with W, A, S and D">
+          <span className="movement-keys" aria-hidden="true">
+            <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
+          </span>
+          <span>Move</span>
+        </aside>
+      </div>
+      {pause.foregroundPanel === 'pause' && (
+        <PauseMenu pause={pause} onResume={coordinator.resume} saveActions={pauseSaveActions} />
+      )}
+    </main>
+  );
+}
+
+function formatSurvivalTime(seconds: number) {
+  return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
+    .map((part) => String(part).padStart(2, '0'))
+    .join(':');
+}

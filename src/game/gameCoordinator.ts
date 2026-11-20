@@ -1,5 +1,6 @@
 import { canOccupy, contains, houses, survivorSpawn, unproject } from './world.ts';
 import type { WorldPoint } from './world.ts';
+import { createGamePause } from './gamePause.ts';
 
 export interface GameState {
   readonly survivor: {
@@ -12,10 +13,10 @@ export interface GameState {
   readonly activeTimeMs: number;
 }
 
-export interface GameCoordinator {
+export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   getState(): GameState;
   subscribe(listener: () => void): () => void;
-  setMovement(screenDirection: WorldPoint): void;
+  setMovement(screenDirection: WorldPoint, sprintHeld?: boolean): void;
   step(deltaMs: number): GameState;
 }
 
@@ -53,7 +54,17 @@ export function createGameCoordinator({ position = survivorSpawn }: { position?:
   let direction: WorldPoint = { x: 0, y: 0 };
   const listeners = new Set<() => void>();
 
+  function notify() {
+    for (const listener of listeners) listener();
+  }
+
+  const pause = createGamePause(() => {
+    if (pause.getPauseState().isPaused) direction = { x: 0, y: 0 };
+    notify();
+  });
+
   function step(deltaMs: number): GameState {
+    if (pause.getPauseState().isPaused) return state;
     if (!Number.isFinite(deltaMs) || deltaMs <= 0) return state;
 
     const previous = state.survivor;
@@ -82,17 +93,19 @@ export function createGameCoordinator({ position = survivorSpawn }: { position?:
       occupiedHouseId: getHouseAt(nextPosition, state.occupiedHouseId),
       activeTimeMs: state.activeTimeMs + deltaMs,
     };
-    for (const listener of listeners) listener();
+    notify();
     return state;
   }
 
   return {
+    ...pause,
     getState: () => state,
     subscribe(listener) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
     setMovement(screenDirection) {
+      if (pause.getPauseState().isPaused) return;
       const input = unproject(screenDirection);
       const magnitude = Math.hypot(input.x, input.y);
       direction = magnitude > 0 ? { x: input.x / magnitude, y: input.y / magnitude } : { x: 0, y: 0 };

@@ -91,3 +91,78 @@ test('occupancy stays stable while the survivor shuffles across the threshold', 
   assert.equal(game.step(47).occupiedHouseId, null);
   assert.equal(game.step(25).occupiedHouseId, 'house_a');
 });
+
+test('Pause freezes the current run and Resume clears held movement', () => {
+  const game = createGameCoordinator();
+  game.setMovement({ x: 1, y: 1 }, true);
+  const before = game.step(100);
+
+  game.handleEscape();
+  assert.equal(game.getPauseState().foregroundPanel, 'pause');
+  assert.strictEqual(game.step(2000), before);
+  game.setMovement({ x: 1, y: 1 }, true);
+
+  game.resume();
+  const resumed = game.step(100);
+  assert.equal(resumed.activeTimeMs, 200);
+  assert.deepEqual(resumed.survivor.position, before.survivor.position);
+  game.setMovement({ x: 1, y: 1 });
+  assert.notDeepEqual(game.step(100).survivor.position, resumed.survivor.position);
+});
+
+test('returning restores the foreground panel before offering explicit Resume', () => {
+  for (const panel of ['inventory', 'loot', 'map'] as const) {
+    const game = createGameCoordinator();
+    game.setForegroundPanel(panel);
+    game.setTabHidden(true);
+    game.setTabHidden(true);
+    game.setTabHidden(false);
+    game.setTabHidden(false);
+    assert.equal(game.getPauseState().foregroundPanel, panel);
+
+    game.resume();
+    game.handleEscape();
+    assert.equal(game.getPauseState().foregroundPanel, 'pause');
+    game.handleEscape();
+    assert.equal(game.step(100).activeTimeMs, 0);
+
+    game.resume();
+    assert.equal(game.step(100).activeTimeMs, 100);
+  }
+});
+
+test('save completion clears only the save hold after a tab interruption', () => {
+  const game = createGameCoordinator();
+  game.handleEscape();
+  game.setSavePending(true);
+  game.setTabHidden(true);
+  game.setSavePending(false);
+  game.resume();
+  assert.equal(game.step(100).activeTimeMs, 0);
+  game.setTabHidden(false);
+  assert.equal(game.getPauseState().foregroundPanel, 'pause');
+  assert.equal(game.getPauseState().resumeRequired, true);
+
+  game.setSavePending(true);
+  game.resume();
+  assert.equal(game.step(100).activeTimeMs, 0);
+  game.setSavePending(false);
+  assert.equal(game.step(100).activeTimeMs, 0);
+  game.resume();
+  assert.equal(game.step(100).activeTimeMs, 100);
+});
+
+test('ordinary Escape dismisses one foreground panel in a continuously visible tab', () => {
+  const game = createGameCoordinator();
+  game.setForegroundPanel('inventory');
+  game.setForegroundPanel('map');
+  assert.equal(game.getPauseState().foregroundPanel, 'inventory');
+
+  game.handleEscape();
+  assert.equal(game.getPauseState().foregroundPanel, null);
+  assert.equal(game.step(100).activeTimeMs, 100);
+  game.handleEscape();
+  assert.equal(game.step(100).activeTimeMs, 100);
+  game.handleEscape();
+  assert.equal(game.step(100).activeTimeMs, 200);
+});
