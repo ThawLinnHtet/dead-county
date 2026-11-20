@@ -18,6 +18,7 @@ export function App() {
           saveGame: () => { void flow.save(false); },
           saveAndExit: () => { void flow.save(true); },
           feedback: flow.pauseFeedback,
+          recovery: flow.pauseRecovery && { ...flow.pauseRecovery, activate: () => { void flow.recoverPause(); } },
         }}
       />
     : <RunMenus
