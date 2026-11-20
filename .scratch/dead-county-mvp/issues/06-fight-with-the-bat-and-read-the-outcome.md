@@ -4,15 +4,17 @@
 
 **Blocked by:** 04 — Loot the starter container and equip the bat, 05 — Evade a roaming zombie
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## Acceptance criteria
 
-- [ ] A world Left Click locks aim at swing start. Contact checks current positions, reach, arc and obstacles. One qualifying zombie can take damage, ordered by angle, distance and stable ID.
-- [ ] A swing costs zero Stamina and permits slow steps during the attack. Nonlethal damage keeps a committed attack in progress. Separate valid bites can each deal damage.
-- [ ] Hits and misses share swing motion and sound. A confirmed hit adds one distinct impact sound and a brief visual cue identifying the actual target at default zoom even with sound muted.
-- [ ] A bite has a distinct anticipation pose, contact and recovery. Confirmed bites cue the survivor and update Health. At zero Health the affected actor stops attacking.
-- [ ] World attack commands stay suppressed during blocking overlays. A click that closes the UI cannot start a swing.
+- [x] A world Left Click locks aim at swing start. Contact checks current positions, reach, arc and obstacles. One qualifying zombie can take damage, ordered by angle, distance and stable ID.
+- [x] A swing costs zero Stamina and permits slow steps during the attack. Nonlethal damage keeps a committed attack in progress. Separate valid bites can each deal damage.
+- [x] Hits and misses share swing motion and sound. A confirmed hit adds one distinct impact sound and a brief visual cue identifying the actual target at default zoom even with sound muted.
+- [x] A bite has a distinct anticipation pose, contact and recovery. Confirmed bites cue the survivor and update Health. At zero Health the affected actor stops attacking.
+- [x] World attack commands stay suppressed during blocking overlays. A click that closes the UI cannot start a swing.
+
+Verified deterministic contact and timing with simulation tests. The Chrome flow verified both survivors at 1280 × 720 and 1920 × 1080, including overlay dismissal, misses, confirmed bites and hits, and muted cues. Newcomer recognition of the bite anticipation remains part of the release playtest.
 
 ## Design and references
 
