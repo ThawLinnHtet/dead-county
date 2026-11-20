@@ -51,7 +51,7 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
-        || coordinator.getPauseState().isPaused) return;
+        || event.target instanceof HTMLButtonElement || coordinator.getPauseState().isPaused) return;
       if (event.code === 'KeyE' && displayed) {
         const result = coordinator.interact(displayed);
         if (result.status === 'inventory_full') {

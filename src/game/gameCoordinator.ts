@@ -46,6 +46,8 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   getOpenContainer(): MapObject | null;
   search(containerId: string): boolean;
   transferItem(containerId: string, itemId: string): TransferResult;
+  toggleMap(): void;
+  closeMap(): void;
   toggleInventory(): void;
   closeInventoryPanel(): void;
   toggleEquip(slot: number, itemId: string): boolean;
@@ -227,6 +229,10 @@ export function createGameCoordinator({
     return { status: 'picked_up', slot };
   }
 
+  function closeMap() {
+    if (pause.getPauseState().foregroundPanel === 'map') pause.setForegroundPanel(null);
+  }
+
   function closeInventoryPanel() {
     const { foregroundPanel, savePending, tabHidden } = pause.getPauseState();
     if (!savePending && !tabHidden && (foregroundPanel === 'inventory' || foregroundPanel === 'loot')) {
@@ -380,6 +386,11 @@ export function createGameCoordinator({
       notify();
       return { status: 'transferred', slot };
     },
+    toggleMap() {
+      if (pause.getPauseState().foregroundPanel === 'map') closeMap();
+      else if (state.survivor.health > 0) pause.setForegroundPanel('map');
+    },
+    closeMap,
     toggleInventory() {
       if (pause.getPauseState().foregroundPanel === 'inventory') closeInventoryPanel();
       else if (state.survivor.health > 0) pause.setForegroundPanel('inventory');

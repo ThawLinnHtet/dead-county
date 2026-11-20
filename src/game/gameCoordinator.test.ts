@@ -186,3 +186,44 @@ test('ordinary Escape dismisses one foreground panel in a continuously visible t
   game.handleEscape();
   assert.equal(game.step(100).activeTimeMs, 200);
 });
+
+test('the map freezes the run and closes without releasing independent holds', () => {
+  const game = createGameCoordinator();
+  game.setMovement({ x: 1, y: 1 }, true);
+  const before = game.step(100);
+
+  game.toggleMap();
+  assert.equal(game.getPauseState().foregroundPanel, 'map');
+  game.setMovement({ x: 1, y: 1 }, true);
+  assert.strictEqual(game.step(2500), before);
+  assert.equal(game.getInteractionTarget(), null);
+
+  game.setSavePending(true);
+  game.closeMap();
+  assert.equal(game.getPauseState().foregroundPanel, null);
+  assert.equal(game.getPauseState().savePending, true);
+  assert.strictEqual(game.step(2500), before);
+
+  game.setSavePending(false);
+  assert.deepEqual(game.step(100).survivor.position, before.survivor.position);
+  assert.equal(game.getState().activeTimeMs, 200);
+});
+
+test('toggling the map keeps other foreground panels and restores interrupted maps before Resume', () => {
+  const game = createGameCoordinator();
+  game.toggleInventory();
+  game.toggleMap();
+  game.closeMap();
+  assert.equal(game.getPauseState().foregroundPanel, 'inventory');
+  game.closeInventoryPanel();
+
+  game.toggleMap();
+  game.setTabHidden(true);
+  game.setTabHidden(false);
+  assert.equal(game.getPauseState().foregroundPanel, 'map');
+  game.toggleMap();
+  assert.equal(game.getPauseState().foregroundPanel, 'pause');
+  assert.equal(game.step(1250).activeTimeMs, 0);
+  game.resume();
+  assert.equal(game.step(100).activeTimeMs, 100);
+});

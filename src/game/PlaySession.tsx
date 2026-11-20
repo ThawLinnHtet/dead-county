@@ -1,15 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { houseNames } from './drawNeighborhoodMap';
 import { GameViewport } from './GameViewport';
 import type { GameCoordinator } from './gameCoordinator';
 import { InventoryPanel } from './InventoryPanel';
+import { FullMap, Minimap } from './NeighborhoodMap';
 import { PauseMenu } from './PauseMenu';
 import type { PauseSaveActions } from './PauseMenu';
-
-const locationNames: Readonly<Record<string, string>> = {
-  house_a: 'House A',
-  house_b: 'House B',
-  house_c: 'House C',
-};
 
 export function PlaySession({
   coordinator,
@@ -41,6 +37,11 @@ export function PlaySession({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.code === 'KeyM') {
+        event.preventDefault();
+        if (!event.repeat) coordinator.toggleMap();
+        return;
+      }
       if (event.code === 'KeyI') {
         if (!event.repeat) coordinator.toggleInventory();
         return;
@@ -67,18 +68,21 @@ export function PlaySession({
         <GameViewport coordinator={coordinator} />
         <header className="game-location">
           <h1>Dead County</h1>
-          <p role="status">{locationNames[occupiedHouseId ?? ''] ?? 'Neighborhood'}</p>
+          <p role="status">{houseNames[occupiedHouseId ?? ''] ?? 'Neighborhood'}</p>
           <div className="combat-health">
             <label htmlFor="survivor-health">Health</label>
             <meter id="survivor-health" min={0} max={100} value={health} />
             <span aria-hidden="true">{Math.ceil(health)} / 100</span>
           </div>
         </header>
-        <div className="survival-clock">
-          <span>Survival Time</span>
-          <time role="timer" aria-label="Survival time" dateTime={`PT${survivalSeconds}S`}>
-            {formatSurvivalTime(survivalSeconds)}
-          </time>
+        <div className="map-hud">
+          <div className="survival-clock">
+            <span>Survival Time</span>
+            <time role="timer" aria-label="Survival time" dateTime={`PT${survivalSeconds}S`}>
+              {formatSurvivalTime(survivalSeconds)}
+            </time>
+          </div>
+          <Minimap coordinator={coordinator} />
         </div>
         <aside className="movement-hint" aria-label="Gameplay controls">
           <span className="movement-keys" aria-hidden="true">
@@ -95,6 +99,7 @@ export function PlaySession({
           )}
         </aside>
       </div>
+      <FullMap coordinator={coordinator} open={pause.foregroundPanel === 'map'} />
       {pause.foregroundPanel === 'pause' && (
         <PauseMenu pause={pause} onResume={coordinator.resume} saveActions={pauseSaveActions} />
       )}
