@@ -1,28 +1,23 @@
 import { useLayoutEffect, useRef } from 'react';
+import type { DeathSaveStatus } from '../save/useRunFlow';
 import type { GameOverResult } from '../game/gameCoordinator';
 import { formatSurvivalTime } from './formatSurvivalTime';
 import './run-menus.css';
 import './game-over.css';
 
-export function GameOverScreen({ result, onNewRun, onMainMenu }: {
+export function GameOverScreen({ result, onNewRun, onMainMenu, saveStatus }: {
   result: GameOverResult;
   onNewRun: () => void;
   onMainMenu: () => void;
+  saveStatus?: DeathSaveStatus;
 }) {
   const heading = useRef<HTMLHeadingElement>(null);
-  const isLeaving = useRef(false);
   const { finalActiveTimeMs } = result;
   const seconds = Number.isFinite(finalActiveTimeMs) ? Math.floor(Math.max(0, finalActiveTimeMs) / 1000) : 0;
 
   useLayoutEffect(() => {
     heading.current?.focus({ preventScroll: true });
   }, []);
-
-  function leave(action: () => void) {
-    if (isLeaving.current) return;
-    isLeaving.current = true;
-    action();
-  }
 
   return (
     <main className="run-menu game-over" aria-labelledby="game-over-heading">
@@ -36,13 +31,17 @@ export function GameOverScreen({ result, onNewRun, onMainMenu }: {
         <dd><time dateTime={`PT${seconds}S`}>{formatSurvivalTime(seconds)}</time></dd>
       </dl>
       <div className="game-over-actions">
-        <button type="button" className="menu-button menu-button--olive" onClick={() => leave(onNewRun)}>
+        <button type="button" className="menu-button menu-button--olive" onClick={onNewRun} disabled={saveStatus === 'pending'}>
           <span className="game-over-play-icon" aria-hidden="true" />New Run
         </button>
-        <button type="button" className="menu-button" onClick={() => leave(onMainMenu)}>
+        <button type="button" className="menu-button" onClick={onMainMenu} disabled={saveStatus === 'pending'}>
           <span className="game-over-home-icon" aria-hidden="true" />Main Menu
         </button>
       </div>
+      {saveStatus === 'pending' && <p className="menu-help" role="status">Closing the run…</p>}
+      {saveStatus === 'failed' && (
+        <p className="menu-error" role="alert">Couldn’t close this run’s save. Choose an action to try again.</p>
+      )}
     </main>
   );
 }

@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { formatSurvivalTime } from '../ui/formatSurvivalTime';
 import { GameOverScreen } from '../ui/GameOverScreen';
+import type { DeathSaveStatus } from '../save/useRunFlow';
 import { houseNames } from './drawNeighborhoodMap';
 import { GameViewport } from './GameViewport';
 import type { GameCoordinator, GameOverResult } from './gameCoordinator';
@@ -15,11 +16,13 @@ export function PlaySession({
   onNewRun,
   onMainMenu,
   pauseSaveActions,
+  deathSaveStatus,
 }: {
   coordinator: GameCoordinator;
   onNewRun: () => void;
   onMainMenu: () => void;
   pauseSaveActions?: PauseSaveActions;
+  deathSaveStatus?: DeathSaveStatus;
 }) {
   const foreground = useRef<HTMLDivElement>(null);
   const pause = useSyncExternalStore(coordinator.subscribe, coordinator.getPauseState);
@@ -73,7 +76,7 @@ export function PlaySession({
   }, [pause.isPaused, gameOver]);
 
   if (gameOver && revealedResult === gameOver) {
-    return <GameOverScreen result={gameOver} onNewRun={onNewRun} onMainMenu={onMainMenu} />;
+    return <GameOverScreen result={gameOver} onNewRun={onNewRun} onMainMenu={onMainMenu} saveStatus={deathSaveStatus} />;
   }
 
   return (

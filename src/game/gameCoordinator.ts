@@ -5,7 +5,7 @@ import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
 import { authoredStock, findDropPosition, itemDefinitions, reachableContainers, reachableDrops, seedContainers } from './items.ts';
 import type { ConsumableStat, ContainerContents, ContainerStock, DroppedItem, ItemInstance } from './items.ts';
-import { createZombies } from './zombie.ts';
+import { createZombies, restoreZombies } from './zombie.ts';
 import type { ZombieSpawn, ZombieState } from './zombie.ts';
 import { getSurvivalStep } from './survival.ts';
 
@@ -39,6 +39,14 @@ export interface GameState {
   readonly occupiedHouseId: string | null;
   readonly activeTimeMs: number;
   readonly gameOver: GameOverResult | null;
+}
+
+export interface GameSnapshot {
+  readonly survivor: Omit<GameState['survivor'], 'gait'>;
+  readonly zombies: GameState['zombies'];
+  readonly containers: ContainerContents;
+  readonly droppedItems: GameState['droppedItems'];
+  readonly activeTimeMs: number;
 }
 
 export interface GameCoordinator extends ReturnType<typeof createGamePause> {
@@ -125,21 +133,31 @@ function travel(position: WorldPoint, direction: WorldPoint, distance: number): 
   return current;
 }
 
-export function createGameCoordinator({
-  position = survivorSpawn,
-  characterId = 'survivor_male',
-  zombieSpawns,
-  containerStock = authoredStock,
-}: {
+export function restoreGameCoordinator(snapshot: GameSnapshot): GameCoordinator {
+  return makeGameCoordinator({ position: snapshot.survivor.position }, snapshot);
+}
+
+type FreshRunOptions = {
   position?: WorldPoint;
   characterId?: SurvivorId;
   zombieSpawns?: readonly ZombieSpawn[];
   containerStock?: ContainerStock;
-} = {}): GameCoordinator {
+};
+
+export function createGameCoordinator(options: FreshRunOptions = {}): GameCoordinator {
+  return makeGameCoordinator(options);
+}
+
+function makeGameCoordinator({
+  position = survivorSpawn,
+  characterId = 'survivor_male',
+  zombieSpawns,
+  containerStock = authoredStock,
+}: FreshRunOptions, snapshot?: GameSnapshot): GameCoordinator {
   if (!canOccupy(position)) throw new Error('The survivor must start on walkable ground');
-  const zombies = createZombies(zombieSpawns);
+  const zombies = snapshot ? restoreZombies(snapshot.zombies) : createZombies(zombieSpawns);
   let state: GameState = {
-    survivor: {
+    survivor: snapshot ? { ...snapshot.survivor, gait: 'idle' } : {
       characterId,
       position: { ...position },
       health: 100,
@@ -156,10 +174,10 @@ export function createGameCoordinator({
       walkDistance: 0,
     },
     zombies: zombies.map((zombie) => zombie.getState()),
-    containers: seedContainers(containerStock),
-    droppedItems: [],
+    containers: snapshot?.containers ?? seedContainers(containerStock),
+    droppedItems: snapshot?.droppedItems ?? [],
     occupiedHouseId: getHouseAt(position),
-    activeTimeMs: 0,
+    activeTimeMs: snapshot?.activeTimeMs ?? 0,
     gameOver: null,
   };
   let direction: WorldPoint = { x: 0, y: 0 };

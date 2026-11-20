@@ -61,12 +61,13 @@ function distance(a: WorldPoint, b: WorldPoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
-function createZombie({ id, position, destination, appearanceId = 'zombie_civilian' }: ZombieSpawn) {
+function createZombie({ id, position, destination, appearanceId = 'zombie_civilian' }: ZombieSpawn, restored?: ZombieState) {
   if (!canOccupy(position)) throw new Error('Zombie spawn must be walkable: ' + id);
   let randomState = 2166136261;
   for (const character of id) randomState = Math.imul(randomState ^ character.charCodeAt(0), 16777619) >>> 0;
 
-  let state: ZombieState = {
+  randomState = restored?.randomState ?? randomState;
+  let state: ZombieState = restored ?? {
     id,
     appearanceId,
     position: { ...position },
@@ -242,5 +243,11 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
 }
 
 export function createZombies(spawns: readonly ZombieSpawn[] = zombieSpawns) {
-  return spawns.map(createZombie);
+  return spawns.map((spawn) => createZombie(spawn));
+}
+
+export function restoreZombies(zombies: readonly ZombieState[]) {
+  return zombies.map((zombie) => createZombie({
+    id: zombie.id, position: zombie.position, destination: zombie.position, appearanceId: zombie.appearanceId,
+  }, zombie));
 }
