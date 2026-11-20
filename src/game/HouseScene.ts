@@ -6,12 +6,16 @@ import { drawHouse } from './drawHouse';
 import { drawScenery } from './drawScenery';
 import type { GameCoordinator, GameState } from './gameCoordinator';
 import groundUrl from './maps/ground.png';
-import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, zombieSpawn } from './world';
+import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth } from './world';
 
 const outsideTerrainTiles = 7;
 
 export class HouseScene extends Phaser.Scene {
   private readonly coordinator: GameCoordinator;
+  private readonly zombieArt = new Map<string, {
+    sprite: Phaser.GameObjects.Sprite;
+    shadow: Phaser.GameObjects.Ellipse;
+  }>();
   private survivor!: Phaser.GameObjects.Sprite;
   private shadow!: Phaser.GameObjects.Ellipse;
   private building!: ReturnType<typeof drawHouse>;
@@ -43,14 +47,12 @@ export class HouseScene extends Phaser.Scene {
     this.building = drawHouse(this);
     drawFurniture(this);
 
-    const zombie = project(zombieSpawn);
-    this.add.ellipse(zombie.x, zombie.y, 22, 8, 0x272721, .42).setDepth(zombie.y - .1);
-    this.add.sprite(zombie.x, zombie.y, 'actors', 7).setOrigin(.5, 56 / 58).setDepth(zombie.y).setFlipX(true);
-
     this.shadow = this.add.ellipse(0, 0, 24, 8, 0x282721, .45);
     const initialState = this.coordinator.getState();
     const survivorTexture = initialState.survivor.characterId === 'survivor_female' ? 'survivor-female' : 'actors';
     this.survivor = this.add.sprite(0, 0, survivorTexture, 0).setOrigin(.5, 56 / 58);
+    this.zombieArt.clear();
+    this.drawZombies(initialState);
     this.drawSurvivor(initialState);
     this.drawOcclusion(initialState, 1);
 
@@ -90,14 +92,35 @@ export class HouseScene extends Phaser.Scene {
     const elapsed = Math.min(Math.max(time - lastFrameAt, 0), 50);
     const state = this.coordinator.step(elapsed);
     this.drawSurvivor(state);
+    this.drawZombies(state);
     this.drawOcclusion(state, Math.min(1, elapsed / 70));
   }
 
   private drawSurvivor({ survivor }: GameState) {
     const { x, y } = project(survivor.position);
     const frame = survivor.gait === 'idle' ? 0 : 1 + Math.floor(survivor.walkDistance * 6.6) % 6;
-    this.survivor.setPosition(x, y).setDepth(y).setFlipX(survivor.facingLeft).setFrame(frame);
+    const lean = survivor.gait === 'sprint' ? survivor.facingLeft ? -8 : 8 : 0;
+    this.survivor.setPosition(x, y).setDepth(y).setFlipX(survivor.facingLeft).setFrame(frame).setAngle(lean);
     this.shadow.setPosition(x, y - 1).setDepth(y - .1);
+  }
+
+  private drawZombies({ zombies }: GameState) {
+    for (const zombie of zombies) {
+      let art = this.zombieArt.get(zombie.id);
+      if (!art) {
+        art = {
+          sprite: this.add.sprite(0, 0, 'actors', 7).setOrigin(.5, 56 / 58),
+          shadow: this.add.ellipse(0, 0, 22, 8, 0x272721, .42),
+        };
+        this.zombieArt.set(zombie.id, art);
+      }
+
+      const { x, y } = project(zombie.position);
+      const stride = zombie.walkDistance * 11;
+      const sway = zombie.moving ? 4 * Math.sin(stride) : 0;
+      art.sprite.setPosition(x, y).setDepth(y).setFlipX(zombie.facingLeft).setAngle(sway);
+      art.shadow.setPosition(x, y - 1).setDepth(y - .1);
+    }
   }
 
   private drawOcclusion(state: GameState, blend: number) {

@@ -1051,12 +1051,24 @@
           "rotation": 0,
           "visible": true,
           "point": true
+        },
+        {
+          "id": 29,
+          "name": "street_zombie_wander",
+          "type": "wander_destination",
+          "x": 230.4,
+          "y": 259.2,
+          "width": 0,
+          "height": 0,
+          "rotation": 0,
+          "visible": true,
+          "point": true
         }
       ]
     }
   ],
   "nextlayerid": 9,
-  "nextobjectid": 29,
+  "nextobjectid": 30,
   "orientation": "isometric",
   "renderorder": "right-down",
   "tiledversion": "1.11.2",
