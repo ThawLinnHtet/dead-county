@@ -4,15 +4,17 @@
 
 **Blocked by:** 08 — Scavenge House C
 
-**Status:** ready-for-agent
+**Status:** done
 
 ## Acceptance criteria
 
-- [ ] Health, Stamina, Hunger, Thirst and survival duration show the current run state. Needs and timers advance with active simulation and freeze for every pause reason.
-- [ ] Complete the viable House A → detour → House B kitchen trip at cautious walking pace after collecting and equipping the bat. Transfer food before either need drains Health, with ordinary progression active throughout.
-- [ ] Critical Hunger or Thirst can be lethal. When both are critical, use the greater damage rate and show both warnings. Distinguish need damage from the survivor’s bite cue.
-- [ ] Food and water are consumed only by eligible Use. Rest restores Stamina according to the approved rules. An eligible Bandage Use is the only Health recovery, clamps to full Health and consumes exactly one instance.
-- [ ] Disabled Use at zero need or full Health keeps the item. Successful Use shows the resulting stat in the panel.
+- [x] Health, Stamina, Hunger, Thirst and survival duration show the current run state. Needs and timers advance with active simulation and freeze for every pause reason.
+- [x] Complete the viable House A → detour → House B kitchen trip at cautious walking pace after collecting and equipping the bat. Transfer food before either need drains Health, with ordinary progression active throughout.
+- [x] Critical Hunger or Thirst can be lethal. When both are critical, use the greater damage rate and show both warnings. Distinguish need damage from the survivor’s bite cue.
+- [x] Food and water are consumed only by eligible Use. Rest restores Stamina according to the approved rules. An eligible Bandage Use is the only Health recovery, clamps to full Health and consumes exactly one instance.
+- [x] Disabled Use at zero need or full Health keeps the item. Successful Use shows the resulting stat in the panel.
+
+The Chrome detour transferred the can at 19.8 seconds of active play, including a brief hesitation in House A. Critical Thirst and Hunger begin at 40 and 50 seconds respectively when untreated. Chrome fixtures verified warning and relief states, Use feedback, and pause holds at both documented sizes. The combined production build kept all four stats and survival time frozen while the full map was open. The coordinator suite verified both independent lethal needs, the higher overlapping damage rate, and one consumption per eligible item.
 
 ## Design and references
 

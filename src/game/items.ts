@@ -3,12 +3,28 @@ import type { MapObject, WorldPoint } from './world.ts';
 
 export const itemDefinitions = {
   baseball_bat: { name: 'Baseball Bat', category: 'Melee Weapon', description: 'A sturdy wooden bat. Equip it for melee attacks.' },
-  water_bottle: { name: 'Water Bottle', category: 'Drink', description: 'A bottle of water. Reduces Thirst.' },
-  canned_food: { name: 'Canned Food', category: 'Food', description: 'A can of preserved food. Reduces Hunger.' },
-  bandage: { name: 'Bandage', category: 'Medical', description: 'A clean bandage. Restores lost Health.' },
+  water_bottle: {
+    name: 'Water Bottle',
+    category: 'Drink',
+    description: 'A bottle of water. Reduces Thirst.',
+    use: { stat: 'thirst', change: -60, noBenefit: 'Thirst is already at zero.' },
+  },
+  canned_food: {
+    name: 'Canned Food',
+    category: 'Food',
+    description: 'A can of preserved food. Reduces Hunger.',
+    use: { stat: 'hunger', change: -65, noBenefit: 'Hunger is already at zero.' },
+  },
+  bandage: {
+    name: 'Bandage',
+    category: 'Medical',
+    description: 'A clean bandage. Restores lost Health.',
+    use: { stat: 'health', change: 40, noBenefit: 'Health is full.' },
+  },
 } as const;
 
 export type ItemKind = keyof typeof itemDefinitions;
+export type ConsumableStat = (typeof itemDefinitions)[Exclude<ItemKind, 'baseball_bat'>]['use']['stat'];
 export interface ItemInstance {
   readonly id: string;
   readonly kind: ItemKind;

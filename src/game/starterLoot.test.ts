@@ -36,7 +36,7 @@ test('both survivors can walk to the same starter supplies and transfer each ins
     assert.equal(game.toggleEquip(0, bat!.id), true);
     assert.equal(game.getState().survivor.equippedWeaponId, bat!.id);
     assert.equal(game.toggleEquip(1, bottle!.id), false);
-    assert.equal(game.getState().survivor.thirst, 0);
+    assert.ok(game.getState().survivor.thirst > 0);
   }
 });
 

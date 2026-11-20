@@ -49,60 +49,20 @@ body {
 
 .game-location {
   top: clamp(1rem, 3vw, 2.5rem);
-  padding: .8rem 1.2rem .72rem;
-  border-left: 2px solid #b14a3a;
-  background: rgb(12 15 16 / 84%);
 }
 
-.game-location h1 {
-  margin: 0;
-  font-family: "Arial Narrow", "Bahnschrift Condensed", sans-serif;
-  font-size: clamp(1.4rem, 2vw, 1.9rem);
-  font-weight: 800;
-  letter-spacing: .045em;
-  line-height: 1;
-  text-transform: uppercase;
-}
-
-.game-location p {
-  margin: .45rem 0 0;
+.game-location-label {
+  width: fit-content;
+  margin: .35rem 0 0;
+  padding: .25rem .5rem;
+  border: 1px solid #49544a;
+  border-radius: 3px;
+  background: rgb(18 20 18 / 94%);
   color: #d6ae6d;
-  font-size: .72rem;
+  font-size: .65rem;
   font-weight: 700;
-  letter-spacing: .16em;
+  letter-spacing: .11em;
   text-transform: uppercase;
-}
-
-.combat-health {
-  display: flex;
-  align-items: center;
-  gap: .55rem;
-  margin-top: .6rem;
-  font-size: .74rem;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.combat-health meter {
-  width: 4.35rem;
-  height: .6rem;
-  appearance: none;
-  background: #422d29;
-  border-radius: 2px;
-}
-
-.combat-health meter::-webkit-meter-bar {
-  border: 0;
-  border-radius: 2px;
-  background: #422d29;
-}
-
-.combat-health meter::-webkit-meter-optimum-value {
-  background: #b14a3a;
-}
-
-.combat-health meter::-moz-meter-bar {
-  background: #b14a3a;
 }
 
 .movement-hint {

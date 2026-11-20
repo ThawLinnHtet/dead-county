@@ -3,6 +3,7 @@ import type { KeyboardEvent } from 'react';
 import type { GameCoordinator } from './gameCoordinator';
 import { itemDefinitions } from './items';
 import type { ItemInstance } from './items';
+import { roundSurvivalStat, survivalStatNames } from './survival';
 import './inventoryPanel.css';
 
 type Selection = { source: 'loot' | 'inventory'; id: string };
@@ -29,6 +30,9 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
   const selected = selection?.source === 'loot' ? items.find((item) => item.id === selection.id) : inventory[slot];
   const definition = selected && itemDefinitions[selected.kind];
   const full = !inventory.includes(null);
+  const itemUse = selection?.source === 'inventory' && selected && selected.kind !== 'baseball_bat'
+    ? coordinator.getItemUse(slot, selected.id) : null;
+  const useReason = itemUse?.status === 'no_benefit' ? itemUse.reason : null;
 
   useLayoutEffect(() => {
     const panel = dialog.current;
@@ -54,6 +58,18 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
     const next = coordinator.getState().containers[container.name]?.[0];
     setSelection(next ? { source: 'loot', id: next.id } : null);
     if (!next || !coordinator.getState().survivor.inventory.includes(null)) close.current?.focus();
+  }
+
+  function useSelectedItem() {
+    if (selection?.source !== 'inventory') return;
+    const result = coordinator.useItem(slot, selection.id);
+    if (result.status === 'used') {
+      setSelection(null);
+      setMessage(`${survivalStatNames[result.stat]} ${roundSurvivalStat(result.value)} / 100`);
+      close.current?.focus();
+    } else {
+      setMessage(result.status === 'no_benefit' ? result.reason : 'Item unavailable');
+    }
   }
 
   function drop() {
@@ -86,8 +102,6 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
   const equipLocked = swinging && selected?.kind === 'baseball_bat';
   const dropLocked = swinging && selected?.id === equippedId;
   const title = container ? containerNames[container.type] ?? 'Container' : 'Inventory';
-  const actionReason = selected?.kind === 'water_bottle' ? 'Thirst is already at zero.'
-    : selected?.kind === 'canned_food' ? 'Hunger is already at zero.' : 'Health is full.';
 
   return (
     <dialog
@@ -179,7 +193,15 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
                         {selected.id === equippedId ? 'Unequip' : 'Equip'}
                       </button>
                     ) : (
-                      <button className="inventory-action" type="button" disabled aria-describedby="inventory-use-reason">Use</button>
+                      <button
+                        className="inventory-action"
+                        type="button"
+                        disabled={itemUse?.status !== 'eligible'}
+                        aria-describedby={useReason ? 'inventory-use-reason' : undefined}
+                        onClick={useSelectedItem}
+                      >
+                        Use
+                      </button>
                     )}
                     <button
                       className="inventory-action inventory-action--drop"
@@ -191,19 +213,22 @@ export function InventoryPanel({ coordinator }: { coordinator: GameCoordinator }
                       Drop
                     </button>
                   </div>
-                  {selected.kind !== 'baseball_bat' && (
-                    <p id="inventory-use-reason" className="inventory-muted">{actionReason}</p>
+                  {useReason && (
+                    <p id="inventory-use-reason" className="inventory-muted">{useReason}</p>
                   )}
                   {equipLocked && (
                     <p id="inventory-swing-reason" className="inventory-muted">Finish your swing first.</p>
                   )}
-                  <p className="inventory-drop-feedback" role="status">{message}</p>
                 </>
               )}
             </>
           ) : (
-            <><h2>Item Details</h2><p className="inventory-muted">Select an item to view its details.</p></>
+            <>
+              <h2>Item Details</h2>
+              {!message && <p className="inventory-muted">Select an item to view its details.</p>}
+            </>
           )}
+          <p className="inventory-item-feedback" role="status">{selection?.source !== 'loot' ? message : ''}</p>
         </section>
       </div>
     </dialog>
