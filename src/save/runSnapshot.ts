@@ -15,11 +15,15 @@ export interface SavedRun {
   readonly snapshot: GameSnapshot;
 }
 
+export interface DamagedSaveGuard {
+  readonly revision: number | undefined;
+}
+
 export type SaveRead =
   | { kind: 'empty' | 'dead'; revision: number }
   | { kind: 'ready'; revision: number; run: SavedRun }
   | { kind: 'unsupported'; reason: 'newer_schema' | 'world' }
-  | { kind: 'damaged' };
+  | { kind: 'damaged'; guard?: DamagedSaveGuard };
 
 type SaveRecord = {
   key: typeof slotKey;

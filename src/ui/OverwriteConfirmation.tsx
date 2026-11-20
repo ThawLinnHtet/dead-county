@@ -1,11 +1,12 @@
 import { useLayoutEffect, useRef } from 'react';
 import type { RefObject } from 'react';
 
-export function OverwriteConfirmation({ pending, onCancel, onConfirm, opener }: {
+export function OverwriteConfirmation({ pending, onCancel, onConfirm, opener, damaged = false }: {
   pending: boolean;
   onCancel: () => void;
   onConfirm: () => void;
   opener: RefObject<HTMLButtonElement | null>;
+  damaged?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const cancel = useRef<HTMLButtonElement>(null);
@@ -43,11 +44,17 @@ export function OverwriteConfirmation({ pending, onCancel, onConfirm, opener }: 
         }
       }}
     >
-      <h2 id="overwrite-heading"><span className="overwrite-dialog__warning" aria-hidden="true">!</span> New Game?</h2>
-      <p id="overwrite-description">This will overwrite your current save progress. Continue?</p>
+      <h2 id="overwrite-heading">
+        <span className="overwrite-dialog__warning" aria-hidden="true">!</span> {damaged ? 'Replace damaged save?' : 'New Game?'}
+      </h2>
+      <p id="overwrite-description">{damaged
+        ? 'Starting a new run will replace this damaged save.'
+        : 'This will overwrite your current save progress. Continue?'}</p>
       <div className="overwrite-dialog__actions">
         <button className="menu-button" type="button" ref={cancel} onClick={onCancel} disabled={pending}>Cancel</button>
-        <button className="menu-button menu-button--rust" type="button" onClick={onConfirm} disabled={pending}>New Game</button>
+        <button className="menu-button menu-button--rust" type="button" onClick={onConfirm} disabled={pending}>
+          {damaged ? 'Replace damaged save' : 'New Game'}
+        </button>
       </div>
       {pending && <p className="menu-help" role="status">Starting the run…</p>}
     </dialog>

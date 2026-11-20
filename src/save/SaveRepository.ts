@@ -1,4 +1,4 @@
-import type { SavedRun, SaveRead } from './runSnapshot.ts';
+import type { DamagedSaveGuard, SavedRun, SaveRead } from './runSnapshot.ts';
 
 export type SaveFailureKind = 'ownership' | 'conflict' | 'storage' | 'read' | 'unavailable' | 'invalid';
 
@@ -20,4 +20,5 @@ export interface SaveRepository {
   release(owner: string): Promise<void>;
   read(owner?: string): Promise<SaveRead>;
   commit(owner: string, expectedRevision: number, mutation: SaveMutation): Promise<number>;
+  replaceDamaged(owner: string, guard: DamagedSaveGuard, run: SavedRun): Promise<number>;
 }

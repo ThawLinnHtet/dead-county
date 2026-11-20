@@ -38,6 +38,7 @@ function Wordmark({ main = false }: { main?: boolean }) {
 export function RunMenus({
   initialScreen, canStart, canContinue, statusMessage, errorMessage, pending, replacementOpen,
   onStartRun, onContinue, onConfirmReplacement, onCancelReplacement, onNavigate,
+  canRetryRead, canReplaceDamaged, damagedStage, onRetryRead, onReplaceDamaged, onDecideDamaged,
 }: {
   initialScreen: 'main' | 'survivors';
   canStart: boolean;
@@ -51,13 +52,21 @@ export function RunMenus({
   onConfirmReplacement: () => void;
   onCancelReplacement: () => void;
   onNavigate: () => void;
+  canRetryRead: boolean;
+  canReplaceDamaged: boolean;
+  damagedStage: 'confirm' | 'choose' | null;
+  onRetryRead: () => void;
+  onReplaceDamaged: () => void;
+  onDecideDamaged: (confirm: boolean) => void;
 }) {
-  const [screen, setScreen] = useState<MenuScreen>(initialScreen);
+  const [menuScreen, setScreen] = useState<MenuScreen>(initialScreen);
+  const screen = damagedStage === 'choose' ? 'survivors' : menuScreen;
   const [selected, setSelected] = useState<SurvivorId | null>(null);
   const newGame = useRef<HTMLButtonElement>(null);
   const showControls = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const startButton = useRef<HTMLButtonElement>(null);
+  const recoveryButton = useRef<HTMLButtonElement>(null);
   const opener = useRef<Exclude<MenuScreen, 'main'> | null>(initialScreen === 'survivors' ? 'survivors' : null);
 
   function open(next: Exclude<MenuScreen, 'main'>) {
@@ -77,7 +86,17 @@ export function RunMenus({
     heading.current?.focus();
   }, [screen]);
 
+  useEffect(() => {
+    if (!pending && !damagedStage && (canRetryRead || (screen === 'main' && canReplaceDamaged))) {
+      recoveryButton.current?.focus();
+    }
+  }, [pending, damagedStage, canRetryRead, canReplaceDamaged, screen]);
+
   function backToMenu() {
+    if (damagedStage === 'choose') {
+      onDecideDamaged(false);
+      return;
+    }
     onNavigate();
     setScreen('main');
   }
@@ -106,11 +125,31 @@ export function RunMenus({
                 onClick={onContinue}
               >Continue</button>
               <p id="continue-status" className="menu-help" role="status">{pending ? 'Opening the local save…' : statusMessage}</p>
+              {(canRetryRead || canReplaceDamaged) && (
+                <button
+                  className="menu-button"
+                  type="button"
+                  ref={recoveryButton}
+                  disabled={pending}
+                  onClick={canRetryRead ? onRetryRead : onReplaceDamaged}
+                >
+                  {canRetryRead ? 'Try reading again' : 'Replace damaged save'}
+                </button>
+              )}
               {errorMessage && <p className="menu-error" role="alert">{errorMessage}</p>}
             </div>
             <button className="menu-button" ref={showControls} disabled={pending} onClick={() => open('controls')}>Controls</button>
           </nav>
           <p className="menu-version">v{version}</p>
+          {damagedStage === 'confirm' && (
+            <OverwriteConfirmation
+              damaged
+              pending={pending}
+              opener={recoveryButton}
+              onCancel={() => onDecideDamaged(false)}
+              onConfirm={() => { setSelected(null); onDecideDamaged(true); }}
+            />
+          )}
         </>
       )}
       {screen === 'survivors' && (
@@ -144,6 +183,11 @@ export function RunMenus({
           </div>
           {!replacementOpen && pending && <p className="menu-help" role="status">Starting the run…</p>}
           {!replacementOpen && !pending && !canStart && <p className="menu-help" role="status">{statusMessage}</p>}
+          {canRetryRead && (
+            <button className="menu-button" type="button" ref={recoveryButton} disabled={pending} onClick={onRetryRead}>
+              Try reading again
+            </button>
+          )}
           {errorMessage && <p className="menu-error" role="alert">{errorMessage}</p>}
           {replacementOpen && (
             <OverwriteConfirmation
