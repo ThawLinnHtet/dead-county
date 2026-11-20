@@ -4,3 +4,100 @@
   --color-background: #0c0f10;
   --color-foreground: #eee6d6;
 }
+
+body {
+  margin: 0;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: "Arial", sans-serif;
+}
+
+.game-screen {
+  position: relative;
+  display: grid;
+  min-height: 100svh;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.game-viewport {
+  position: absolute;
+  inset: 0;
+  background: #3f4934;
+  touch-action: none;
+}
+
+.game-viewport canvas {
+  display: block;
+}
+
+.game-screen::after {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: radial-gradient(ellipse at 52% 48%, transparent 41%, rgb(12 15 16 / 36%) 100%);
+  content: "";
+  pointer-events: none;
+}
+
+.game-location,
+.movement-hint {
+  position: absolute;
+  z-index: 2;
+  left: clamp(1rem, 3vw, 2.5rem);
+  pointer-events: none;
+}
+
+.game-location {
+  top: clamp(1rem, 3vw, 2.5rem);
+  padding: .8rem 1.2rem .72rem;
+  border-left: 2px solid #b14a3a;
+  background: rgb(12 15 16 / 84%);
+}
+
+.game-location h1 {
+  margin: 0;
+  font-family: "Arial Narrow", "Bahnschrift Condensed", sans-serif;
+  font-size: clamp(1.4rem, 2vw, 1.9rem);
+  font-weight: 800;
+  letter-spacing: .045em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.game-location p {
+  margin: .45rem 0 0;
+  color: #d6ae6d;
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+
+.movement-hint {
+  bottom: clamp(1rem, 3vw, 2.25rem);
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  padding: .5rem .7rem;
+  border: 1px solid #49544a;
+  background: rgb(12 15 16 / 85%);
+  font-size: .78rem;
+}
+
+.movement-keys {
+  display: flex;
+  gap: .2rem;
+}
+
+.movement-keys kbd {
+  display: grid;
+  width: 1.45rem;
+  height: 1.45rem;
+  place-items: center;
+  border: 1px solid #66695a;
+  border-radius: 3px;
+  background: #242822;
+  color: #eee6d6;
+  font: 700 .74rem/1 "Arial", sans-serif;
+}
