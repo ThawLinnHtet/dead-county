@@ -4,7 +4,7 @@ import type { GameCoordinator, SurvivorId } from '../game/gameCoordinator';
 import { SaveFailure } from './SaveRepository';
 import type { SaveRepository } from './SaveRepository';
 import { captureRun } from './runSnapshot';
-import type { SaveRead } from './runSnapshot';
+import type { SavedRun, SaveRead } from './runSnapshot';
 
 type Availability = SaveRead['kind'] | 'checking' | 'blocked' | 'read_failed' | 'unavailable';
 type MenuDestination = 'main' | 'survivors';
@@ -12,7 +12,12 @@ type OwnedSlot = { owner: string; revision: number };
 type RunSession = OwnedSlot & { id: string; coordinator: GameCoordinator };
 type Replacement = OwnedSlot & { characterId: SurvivorId };
 export type DeathSaveStatus = 'pending' | 'failed' | 'complete';
-type PauseFeedback = { kind: 'saved' | 'error'; message: string };
+type PauseFeedback = { kind: 'saved' | 'error' | 'progress'; message: string };
+type SaveAttempt = { exit: boolean; revision: number; run: SavedRun };
+type PauseRecovery =
+  | { kind: 'reload' }
+  | { kind: 'retry_write'; attempt: SaveAttempt }
+  | { kind: 'retry_read'; attempt?: SaveAttempt };
 
 const blockedMessage = 'This run is open in another tab.';
 const storageMessage = 'Couldn’t access the local save. Try again.';
@@ -48,6 +53,7 @@ export function useRunFlow(repository: SaveRepository) {
   const [menuError, setMenuError] = useState<string | null>(null);
   const [replacement, setReplacement] = useState<Replacement | null>(null);
   const [pauseFeedback, setPauseFeedback] = useState<PauseFeedback | null>(null);
+  const [pauseRecovery, setPauseRecovery] = useState<PauseRecovery | null>(null);
   const [deathStatus, setDeathStatus] = useState<DeathSaveStatus>('pending');
 
   const operation = useRef(false);
@@ -90,7 +96,7 @@ export function useRunFlow(repository: SaveRepository) {
     const interval = window.setInterval(refresh, 1000);
     const unsubscribe = repository.subscribeAvailability(refresh);
     window.addEventListener('focus', refresh);
-    void refresh();
+    if (availability.status !== 'blocked') void refresh();
     return () => {
       current = false;
       window.clearInterval(interval);
@@ -118,6 +124,7 @@ export function useRunFlow(repository: SaveRepository) {
     deathCommitted.current = false;
     setDeathStatus('pending');
     setPauseFeedback(null);
+    setPauseRecovery(null);
     setSession(slot);
   }
 
@@ -202,39 +209,109 @@ export function useRunFlow(repository: SaveRepository) {
     }
   }
 
+  async function loseRunOwnership(active: RunSession) {
+    await repository.release(active.owner);
+    leaveRun('main');
+    displayAvailability('blocked');
+  }
+
+  function offerReload() {
+    setPauseFeedback({ kind: 'error', message: revisionMessage });
+    setPauseRecovery({ kind: 'reload' });
+  }
+
+  async function checkRetry(active: RunSession, attempt: SaveAttempt) {
+    try {
+      const saved = await repository.read(active.owner);
+      if (saved.kind === 'ready' && saved.revision === attempt.revision && saved.run.id === attempt.run.id) {
+        setPauseFeedback({ kind: 'error', message: 'Could not save.' });
+        setPauseRecovery({ kind: 'retry_write', attempt });
+      } else {
+        offerReload();
+      }
+    } catch (error) {
+      if (failureKind(error) === 'ownership') await loseRunOwnership(active);
+      else {
+        setPauseFeedback({ kind: 'error', message: 'Could not read the local save.' });
+        setPauseRecovery({ kind: 'retry_read', attempt });
+      }
+    }
+  }
+
+  async function writeSave(active: RunSession, attempt: SaveAttempt) {
+    operation.current = true;
+    setPauseFeedback(null);
+    setPauseRecovery(null);
+    active.coordinator.setSavePending(true);
+    try {
+      active.revision = await repository.commit(active.owner, attempt.revision, { kind: 'save', run: attempt.run });
+      if (attempt.exit) {
+        await repository.release(active.owner);
+        leaveRun('main');
+      } else {
+        setPauseFeedback({ kind: 'saved', message: 'Game saved' });
+        active.coordinator.setSavePending(false);
+      }
+    } catch (error) {
+      const kind = failureKind(error);
+      if (kind === 'ownership') await loseRunOwnership(active);
+      else if (kind === 'conflict' || kind === 'invalid') offerReload();
+      else await checkRetry(active, attempt);
+    } finally {
+      operation.current = false;
+    }
+  }
+
   async function save(exit: boolean) {
     const active = currentRun.current;
     if (!active || operation.current || active.coordinator.getState().gameOver) return;
     const { foregroundPanel, tabHidden, savePending } = active.coordinator.getPauseState();
     if (foregroundPanel !== 'pause' || tabHidden || savePending) return;
+    await writeSave(active, {
+      exit, revision: active.revision,
+      run: { id: active.id, snapshot: captureRun(active.coordinator) },
+    });
+  }
+
+  async function recoverPause() {
+    const active = currentRun.current;
+    const choice = pauseRecovery;
+    if (!active || !choice || operation.current || active.coordinator.getPauseState().tabHidden) return;
+    if (choice.kind === 'retry_write') {
+      await writeSave(active, choice.attempt);
+      return;
+    }
+
     operation.current = true;
-    setPauseFeedback(null);
-    active.coordinator.setSavePending(true);
-    let releaseHold = true;
+    setPauseRecovery(null);
+    setPauseFeedback({ kind: 'progress', message: 'Reading the local save…' });
     try {
-      active.revision = await repository.commit(active.owner, active.revision, {
-        kind: 'save', run: { id: active.id, snapshot: captureRun(active.coordinator) },
-      });
-      if (exit) {
-        await repository.release(active.owner);
-        releaseHold = false;
-        leaveRun('main');
+      if (choice.kind === 'retry_read' && choice.attempt) {
+        await checkRetry(active, choice.attempt);
+        return;
+      }
+      const saved = await repository.read(active.owner);
+      if (saved.kind === 'ready') {
+        const coordinator = restoreGameCoordinator(saved.run.snapshot);
+        const { tabHidden, resumeRequired } = active.coordinator.getPauseState();
+        coordinator.handleEscape();
+        if (tabHidden || resumeRequired) {
+          coordinator.setTabHidden(true);
+          coordinator.setTabHidden(tabHidden);
+        }
+        enterRun({ owner: active.owner, revision: saved.revision, id: saved.run.id, coordinator });
       } else {
-        setPauseFeedback({ kind: 'saved', message: 'Game saved' });
+        await repository.release(active.owner);
+        leaveRun('main');
+        displayAvailability(saved.kind, saved.kind === 'unsupported' ? saved.reason : undefined);
       }
     } catch (error) {
-      const kind = failureKind(error);
-      if (kind === 'ownership') {
-        await repository.release(active.owner);
-        releaseHold = false;
-        leaveRun('main');
-        displayAvailability('blocked');
-      } else {
-        setPauseFeedback({ kind: 'error', message: kind === 'conflict' ? revisionMessage : storageMessage });
-        if (kind === 'conflict' || kind === 'invalid') releaseHold = false;
+      if (failureKind(error) === 'ownership') await loseRunOwnership(active);
+      else {
+        setPauseFeedback({ kind: 'error', message: 'Could not read the local save.' });
+        setPauseRecovery({ kind: 'retry_read' });
       }
     } finally {
-      if (releaseHold) active.coordinator.setSavePending(false);
       operation.current = false;
     }
   }
@@ -249,7 +326,11 @@ export function useRunFlow(repository: SaveRepository) {
         deathCommitted.current = true;
         setDeathStatus('complete');
         return true;
-      } catch {
+      } catch (error) {
+        if (failureKind(error) === 'ownership') {
+          await loseRunOwnership(active);
+          return false;
+        }
         // Keep the lease and the terminal run in view until invalidation commits.
         setDeathStatus('failed');
         return false;
@@ -292,7 +373,12 @@ export function useRunFlow(repository: SaveRepository) {
 
   return {
     session, destination, availability, pending, menuError, replacement, pauseFeedback, deathStatus,
-    requestStart, continueRun, finishReplacement, save, leaveDeadRun,
+    requestStart, continueRun, finishReplacement, save, leaveDeadRun, recoverPause,
+    pauseRecovery: pauseRecovery && {
+      label: pauseRecovery.kind === 'reload' ? 'Reload latest save'
+        : pauseRecovery.kind === 'retry_read' ? 'Try reading again' : 'Try again',
+      warning: pauseRecovery.kind === 'reload' ? 'Reloading will discard unsaved progress in this tab.' : undefined,
+    },
     clearMenuError: () => setMenuError(null),
   };
 }

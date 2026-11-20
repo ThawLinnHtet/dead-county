@@ -123,6 +123,16 @@
   text-align: center;
 }
 
+.pause-menu__recovery {
+  display: grid;
+  gap: .65rem;
+  margin-top: .65rem;
+}
+
+.pause-menu__recovery .pause-menu__action {
+  justify-content: center;
+}
+
 .survival-clock {
   position: absolute;
   z-index: 2;
