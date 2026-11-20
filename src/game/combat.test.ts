@@ -202,15 +202,29 @@ test('a killed zombie and a dead survivor cannot complete or start further attac
 
   const bitten = createGameCoordinator({
     position: survivorPosition,
+    characterId: 'survivor_female',
     zombieSpawns: Array.from({ length: 5 }, (_, index) => spawn('biter-' + index, target)),
   });
   equipBat(bitten);
   bitten.step(50);
   bitten.step(350);
   assert.equal(bitten.startBatSwing(target), true);
-  const final = bitten.step(100);
+  const deaths: NonNullable<ReturnType<GameCoordinator['getState']>['gameOver']>[] = [];
+  const unsubscribe = bitten.subscribe(() => {
+    const { gameOver } = bitten.getState();
+    if (gameOver) deaths.push(gameOver);
+  });
+  // Feed a long frame across contact and verify that none of its remaining time counts.
+  const final = bitten.step(5000);
   assert.equal(final.survivor.health, 0);
   assert.equal(final.survivor.attack, null);
+  assert.deepEqual(final.gameOver, { survivorId: 'survivor_female', finalActiveTimeMs: 475 });
   assert.equal(bitten.startBatSwing(target), false);
+  bitten.toggleMap();
+  bitten.toggleInventory();
+  bitten.handleEscape();
+  assert.equal(bitten.getPauseState().foregroundPanel, null);
   assert.strictEqual(bitten.step(1000), final);
+  assert.deepEqual(deaths, [final.gameOver]);
+  unsubscribe();
 });

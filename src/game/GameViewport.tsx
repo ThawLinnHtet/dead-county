@@ -1,12 +1,15 @@
 import { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
 import { HouseScene } from './HouseScene';
-import type { GameCoordinator, InteractionTarget } from './gameCoordinator';
+import type { GameCoordinator, GameOverResult, InteractionTarget } from './gameCoordinator';
 import { itemDefinitions } from './items';
 
 const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight']);
 
-export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) {
+export function GameViewport({ coordinator, onDeathAnimationEnd }: {
+  coordinator: GameCoordinator;
+  onDeathAnimationEnd: (result: GameOverResult) => void;
+}) {
   const host = useRef<HTMLDivElement>(null);
   const interactionPrompt = useRef<HTMLDivElement>(null);
   const interactionLabel = useRef<HTMLSpanElement>(null);
@@ -35,7 +38,7 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
       }
       prompt.style.left = `clamp(${promptInset}px, ${placement.x}px, calc(100% - ${promptInset}px))`;
       prompt.style.top = `${placement.y}px`;
-    });
+    }, onDeathAnimationEnd, window.matchMedia('(prefers-reduced-motion: reduce)').matches);
 
     function updateMovement() {
       coordinator.setMovement({
@@ -51,7 +54,8 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
-        || event.target instanceof HTMLButtonElement || coordinator.getPauseState().isPaused) return;
+        || event.target instanceof HTMLButtonElement || coordinator.getPauseState().isPaused
+        || coordinator.getState().gameOver) return;
       if (event.code === 'KeyE' && displayed) {
         const result = coordinator.interact(displayed);
         if (result.status === 'inventory_full') {
@@ -74,7 +78,7 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
     }
 
     const unsubscribe = coordinator.subscribe(() => {
-      if (coordinator.getPauseState().isPaused) heldKeys.clear();
+      if (coordinator.getPauseState().isPaused || coordinator.getState().gameOver) heldKeys.clear();
     });
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
@@ -109,7 +113,7 @@ export function GameViewport({ coordinator }: { coordinator: GameCoordinator }) 
       cancelAnimationFrame(frame);
       game?.destroy(true);
     };
-  }, [coordinator]);
+  }, [coordinator, onDeathAnimationEnd]);
 
   return (
     <div ref={host} className="game-viewport" role="region" aria-label="Dead County game world" tabIndex={-1}>

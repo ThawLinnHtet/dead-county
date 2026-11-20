@@ -54,11 +54,14 @@ test('critical needs use the stronger drain, never cue a bite, and end the activ
   assert.equal(both.survivor.health, 64.25);
   assert.ok(both.survivor.hunger >= 80 && both.survivor.thirst >= 80);
   assert.equal(both.survivor.lastBiteAtMs, null);
+  assert.equal(both.gameOver, null);
 
   const dead = game.step(90_000);
   assert.equal(dead.survivor.health, 0);
   assert.equal(dead.survivor.lastBiteAtMs, null);
   assert.ok(Math.abs(dead.activeTimeMs - 70_769.23) < .01);
+  assert.equal(dead.gameOver?.survivorId, 'survivor_male');
+  assert.equal(dead.gameOver?.finalActiveTimeMs, dead.activeTimeMs);
   assert.strictEqual(game.step(1000), dead);
   game.handleEscape();
   game.toggleInventory();
@@ -66,6 +69,7 @@ test('critical needs use the stronger drain, never cue a bite, and end the activ
   game.setTabHidden(true);
   game.setTabHidden(false);
   assert.equal(game.getPauseState().foregroundPanel, null);
+  assert.strictEqual(game.getState(), dead);
 });
 
 test('Use is eligible only for a benefit and commits exactly the requested instance and resulting stat', () => {

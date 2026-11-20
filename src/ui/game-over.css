@@ -1,0 +1,122 @@
+.run-menu.game-over {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  padding: clamp(2rem, 8.8svh, 6rem) 1rem 2rem;
+  background-image: url("/assets/ui/game-over-neighborhood.webp");
+  text-align: center;
+}
+
+.game-over::before {
+  background: radial-gradient(ellipse at 50% 40%, rgb(12 9 9 / 53%) 5%, transparent 67%);
+}
+
+.game-over .game-over-brand {
+  font-size: clamp(1.75rem, 5.5svh, 3.9rem);
+  letter-spacing: .07em;
+}
+
+.game-over-brand::after {
+  opacity: .8;
+}
+
+.game-over .game-over-heading {
+  max-width: 100%;
+  margin-top: clamp(1.5rem, 4.9svh, 3.4rem);
+  outline: none;
+  font-size: clamp(2.75rem, 13.8svh, 9rem);
+  letter-spacing: .045em;
+}
+
+.game-over-heading::after {
+  height: .1em;
+  margin-top: .04em;
+  background-color: var(--menu-rust);
+}
+
+.game-over-message {
+  margin: clamp(.5rem, 1.6svh, 1rem) 0 0;
+  font-size: clamp(1.05rem, 3svh, 1.8rem);
+  font-weight: 600;
+}
+
+.game-over-result {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  width: min(100%, clamp(19rem, 32vw, 37rem));
+  min-height: clamp(3.25rem, 8.15svh, 5.25rem);
+  gap: .4rem 1rem;
+  margin: clamp(1.15rem, 3.75svh, 2.5rem) 0 0;
+  padding: .55rem clamp(.9rem, 2vw, 2rem);
+  border: 1px solid var(--menu-border);
+  border-radius: 4px;
+  background: linear-gradient(150deg, rgb(52 58 51 / 34%), transparent 58%), var(--menu-surface);
+  box-shadow: inset 0 0 0 1px rgb(238 230 214 / 13%), 0 6px 20px rgb(0 0 0 / 34%);
+}
+
+.game-over-result dt {
+  display: flex;
+  align-items: center;
+  gap: .85rem;
+  font-size: clamp(.89rem, 1.35vw, 1.25rem);
+  font-weight: 600;
+}
+
+.game-over-result dd {
+  margin: 0 0 0 auto;
+  font: 600 clamp(1.25rem, 2.25vw, 2rem)/1 ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.game-over-actions {
+  display: grid;
+  width: min(100%, clamp(17rem, 28vw, 32rem));
+  gap: clamp(.5rem, 1.55svh, 1rem);
+  margin-top: clamp(.9rem, 3svh, 2rem);
+}
+
+.game-over-actions .menu-button {
+  position: relative;
+  min-height: clamp(2.75rem, 7.25svh, 4.75rem);
+  font-size: clamp(1.2rem, 3.6svh, 2.25rem);
+}
+
+.game-over-play-icon,
+.game-over-home-icon {
+  position: absolute;
+  inset-inline-start: 11%;
+  width: 1em;
+  height: 1em;
+  background-color: currentColor;
+  font-size: .77em;
+}
+
+.game-over-play-icon {
+  clip-path: polygon(12% 0, 97% 50%, 12% 100%);
+}
+
+.game-over-home-icon {
+  clip-path: polygon(50% 2%, 100% 47%, 86% 47%, 86% 100%, 61% 100%, 61% 64%, 39% 64%, 39% 100%, 14% 100%, 14% 47%, 0 47%);
+}
+
+.game-over-clock-icon {
+  position: relative;
+  width: 1.25em;
+  height: 1.25em;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.game-over-clock-icon::before {
+  position: absolute;
+  top: 18%;
+  left: 50%;
+  width: 35%;
+  height: 36%;
+  border-bottom: 2px solid currentColor;
+  border-left: 2px solid currentColor;
+  content: "";
+}

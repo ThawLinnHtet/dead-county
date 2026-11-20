@@ -34,14 +34,17 @@ function Wordmark({ main = false }: { main?: boolean }) {
   );
 }
 
-export function RunMenus({ onStartRun }: { onStartRun: (characterId: SurvivorId) => void }) {
-  const [screen, setScreen] = useState<MenuScreen>('main');
+export function RunMenus({ initialScreen = 'main', onStartRun }: {
+  initialScreen?: 'main' | 'survivors';
+  onStartRun: (characterId: SurvivorId) => void;
+}) {
+  const [screen, setScreen] = useState<MenuScreen>(initialScreen);
   const [selected, setSelected] = useState<SurvivorId | null>(null);
   const [startError, setStartError] = useState(false);
   const newGame = useRef<HTMLButtonElement>(null);
   const showControls = useRef<HTMLButtonElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
-  const opener = useRef<Exclude<MenuScreen, 'main'> | null>(null);
+  const opener = useRef<Exclude<MenuScreen, 'main'> | null>(initialScreen === 'survivors' ? 'survivors' : null);
 
   function open(next: Exclude<MenuScreen, 'main'>) {
     opener.current = next;

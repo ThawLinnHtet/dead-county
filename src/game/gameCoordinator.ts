@@ -11,6 +11,11 @@ import { getSurvivalStep } from './survival.ts';
 
 export type SurvivorId = 'survivor_male' | 'survivor_female';
 
+export interface GameOverResult {
+  readonly survivorId: SurvivorId;
+  readonly finalActiveTimeMs: number;
+}
+
 export interface GameState {
   readonly survivor: {
     readonly characterId: SurvivorId;
@@ -33,6 +38,7 @@ export interface GameState {
   readonly droppedItems: readonly DroppedItem[];
   readonly occupiedHouseId: string | null;
   readonly activeTimeMs: number;
+  readonly gameOver: GameOverResult | null;
 }
 
 export interface GameCoordinator extends ReturnType<typeof createGamePause> {
@@ -154,6 +160,7 @@ export function createGameCoordinator({
     droppedItems: [],
     occupiedHouseId: getHouseAt(position),
     activeTimeMs: 0,
+    gameOver: null,
   };
   let direction: WorldPoint = { x: 0, y: 0 };
   let shiftHeld = false;
@@ -165,14 +172,16 @@ export function createGameCoordinator({
     for (const listener of listeners) listener();
   }
 
+  function clearMovement() {
+    direction = { x: 0, y: 0 };
+    shiftHeld = false;
+    sprintRequested = false;
+  }
+
   const pause = createGamePause(() => {
     const { isPaused, foregroundPanel } = pause.getPauseState();
     if (foregroundPanel !== 'loot') openContainer = null;
-    if (isPaused) {
-      direction = { x: 0, y: 0 };
-      shiftHeld = false;
-      sprintRequested = false;
-    }
+    if (isPaused) clearMovement();
     notify();
   });
 
@@ -181,7 +190,7 @@ export function createGameCoordinator({
   }
 
   function interactionCandidates(): { target: InteractionTarget; distance: number }[] {
-    if (pause.getPauseState().isPaused || state.survivor.health <= 0) return [];
+    if (pause.getPauseState().isPaused || state.gameOver) return [];
     return [
       ...getReachableContainers().map(({ object, distance }) => ({
         target: {
@@ -249,7 +258,7 @@ export function createGameCoordinator({
 
   function isInventoryAvailable() {
     const { foregroundPanel, tabHidden, savePending } = pause.getPauseState();
-    return state.survivor.health > 0 && !tabHidden && !savePending
+    return !state.gameOver && !tabHidden && !savePending
       && (foregroundPanel === 'inventory' || (foregroundPanel === 'loot' && openContainer !== null));
   }
 
@@ -298,6 +307,7 @@ export function createGameCoordinator({
       return total + zombie.resolveBite(nextPosition);
     }, 0);
     const health = Math.max(0, previous.health - needDamage - biteDamage);
+    const gameOver = health === 0 ? { survivorId: previous.characterId, finalActiveTimeMs: activeTimeMs } : null;
     state = {
       ...state,
       survivor: {
@@ -317,15 +327,20 @@ export function createGameCoordinator({
       zombies: zombies.map((zombie) => zombie.getState()),
       occupiedHouseId: getHouseAt(nextPosition, state.occupiedHouseId),
       activeTimeMs,
+      gameOver,
     };
+    if (gameOver) {
+      clearMovement();
+      openContainer = null;
+    }
   }
 
   function step(deltaMs: number): GameState {
-    if (pause.getPauseState().isPaused || state.survivor.health <= 0) return state;
+    if (pause.getPauseState().isPaused || state.gameOver) return state;
     if (!Number.isFinite(deltaMs) || deltaMs <= 0) return state;
 
     let remaining = deltaMs;
-    while (remaining > 0 && state.survivor.health > 0) {
+    while (remaining > 0 && !state.gameOver) {
       let elapsed = Math.min(remaining, state.survivor.attack?.remainingMs ?? remaining);
       for (const { attack } of state.zombies) {
         if (attack) elapsed = Math.min(elapsed, attack.remainingMs);
@@ -341,13 +356,13 @@ export function createGameCoordinator({
   return {
     ...pause,
     handleEscape() {
-      if (state.survivor.health > 0) pause.handleEscape();
+      if (!state.gameOver) pause.handleEscape();
     },
     setForegroundPanel(panel) {
-      if (panel === null || state.survivor.health > 0) pause.setForegroundPanel(panel);
+      if (!state.gameOver) pause.setForegroundPanel(panel);
     },
     setTabHidden(hidden) {
-      if (state.survivor.health > 0) pause.setTabHidden(hidden);
+      if (!state.gameOver) pause.setTabHidden(hidden);
     },
     getState: () => state,
     subscribe(listener) {
@@ -355,7 +370,7 @@ export function createGameCoordinator({
       return () => { listeners.delete(listener); };
     },
     setMovement(screenDirection, sprintHeld = false) {
-      if (pause.getPauseState().isPaused || state.survivor.health <= 0) return;
+      if (pause.getPauseState().isPaused || state.gameOver) return;
       const input = unproject(screenDirection);
       const magnitude = Math.hypot(input.x, input.y);
       direction = Number.isFinite(magnitude) && magnitude > 0
@@ -368,7 +383,7 @@ export function createGameCoordinator({
     step,
     startBatSwing(target) {
       const { survivor } = state;
-      if (pause.getPauseState().isPaused || !survivor.equippedWeaponId || survivor.attack || survivor.health <= 0
+      if (pause.getPauseState().isPaused || !survivor.equippedWeaponId || survivor.attack || state.gameOver
           || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return false;
 
       const facing = aimFrom(survivor.position, target) ?? survivor.facing;
@@ -419,12 +434,12 @@ export function createGameCoordinator({
     },
     toggleMap() {
       if (pause.getPauseState().foregroundPanel === 'map') closeMap();
-      else if (state.survivor.health > 0) pause.setForegroundPanel('map');
+      else if (!state.gameOver) pause.setForegroundPanel('map');
     },
     closeMap,
     toggleInventory() {
       if (pause.getPauseState().foregroundPanel === 'inventory') closeInventoryPanel();
-      else if (state.survivor.health > 0) pause.setForegroundPanel('inventory');
+      else if (!state.gameOver) pause.setForegroundPanel('inventory');
     },
     closeInventoryPanel,
     toggleEquip(slot, itemId) {

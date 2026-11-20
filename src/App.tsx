@@ -6,8 +6,17 @@ import { RunMenus } from './ui/RunMenus';
 
 export function App() {
   const [coordinator, setCoordinator] = useState<GameCoordinator | null>(null);
+  const [menuScreen, setMenuScreen] = useState<'main' | 'survivors'>('main');
+
+  function leaveRun(destination: typeof menuScreen) {
+    setMenuScreen(destination);
+    setCoordinator(null);
+  }
 
   return coordinator
-    ? <PlaySession coordinator={coordinator} />
-    : <RunMenus onStartRun={(characterId) => setCoordinator(createGameCoordinator({ characterId }))} />;
+    ? <PlaySession coordinator={coordinator} onNewRun={() => leaveRun('survivors')} onMainMenu={() => leaveRun('main')} />
+    : <RunMenus
+        initialScreen={menuScreen}
+        onStartRun={(characterId) => setCoordinator(createGameCoordinator({ characterId }))}
+      />;
 }

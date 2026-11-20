@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { formatSurvivalTime } from '../ui/formatSurvivalTime';
+import { GameOverScreen } from '../ui/GameOverScreen';
 import { houseNames } from './drawNeighborhoodMap';
 import { GameViewport } from './GameViewport';
-import type { GameCoordinator } from './gameCoordinator';
+import type { GameCoordinator, GameOverResult } from './gameCoordinator';
 import { InventoryPanel } from './InventoryPanel';
 import { FullMap, Minimap } from './NeighborhoodMap';
 import { PauseMenu } from './PauseMenu';
@@ -10,9 +12,13 @@ import { SurvivalMeters } from './SurvivalMeters';
 
 export function PlaySession({
   coordinator,
+  onNewRun,
+  onMainMenu,
   pauseSaveActions,
 }: {
   coordinator: GameCoordinator;
+  onNewRun: () => void;
+  onMainMenu: () => void;
   pauseSaveActions?: PauseSaveActions;
 }) {
   const foreground = useRef<HTMLDivElement>(null);
@@ -26,17 +32,21 @@ export function PlaySession({
     coordinator.subscribe,
     () => Math.floor(coordinator.getState().activeTimeMs / 1000),
   );
+  const gameOver = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().gameOver);
+  const [revealedResult, revealGameOver] = useState<GameOverResult | null>(null);
 
   useLayoutEffect(() => {
+    if (gameOver) return;
     const onVisibilityChange = () => coordinator.setTabHidden(document.hidden);
     document.addEventListener('visibilitychange', onVisibilityChange);
     onVisibilityChange();
     return () => document.removeEventListener('visibilitychange', onVisibilityChange);
-  }, [coordinator]);
+  }, [coordinator, gameOver]);
 
   useEffect(() => {
+    if (gameOver) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+      if (coordinator.getState().gameOver || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
       if (event.code === 'KeyM') {
         event.preventDefault();
         if (!event.repeat) coordinator.toggleMap();
@@ -52,20 +62,24 @@ export function PlaySession({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [coordinator]);
+  }, [coordinator, gameOver]);
 
   useLayoutEffect(() => {
-    if (!pause.isPaused) {
+    if (!pause.isPaused && !gameOver) {
       const target = foreground.current?.querySelector('canvas')
         ?? foreground.current?.querySelector<HTMLElement>('.game-viewport');
       target?.focus({ preventScroll: true });
     }
-  }, [pause.isPaused]);
+  }, [pause.isPaused, gameOver]);
+
+  if (gameOver && revealedResult === gameOver) {
+    return <GameOverScreen result={gameOver} onNewRun={onNewRun} onMainMenu={onMainMenu} />;
+  }
 
   return (
     <main className="game-screen">
-      <div ref={foreground} inert={pause.isPaused}>
-        <GameViewport coordinator={coordinator} />
+      <div ref={foreground} inert={pause.isPaused || gameOver !== null}>
+        <GameViewport coordinator={coordinator} onDeathAnimationEnd={revealGameOver} />
         <header className="game-location">
           <SurvivalMeters coordinator={coordinator} />
           <p className="game-location-label" role="status">{houseNames[occupiedHouseId ?? ''] ?? 'Neighborhood'}</p>
@@ -94,19 +108,17 @@ export function PlaySession({
           )}
         </aside>
       </div>
-      <FullMap coordinator={coordinator} open={pause.foregroundPanel === 'map'} />
-      {pause.foregroundPanel === 'pause' && (
-        <PauseMenu pause={pause} onResume={coordinator.resume} saveActions={pauseSaveActions} />
-      )}
-      {(pause.foregroundPanel === 'inventory' || (pause.foregroundPanel === 'loot' && coordinator.getOpenContainer())) && (
-        <InventoryPanel coordinator={coordinator} />
+      {!gameOver && (
+        <>
+          <FullMap coordinator={coordinator} open={pause.foregroundPanel === 'map'} />
+          {pause.foregroundPanel === 'pause' && (
+            <PauseMenu pause={pause} onResume={coordinator.resume} saveActions={pauseSaveActions} />
+          )}
+          {(pause.foregroundPanel === 'inventory' || (pause.foregroundPanel === 'loot' && coordinator.getOpenContainer())) && (
+            <InventoryPanel coordinator={coordinator} />
+          )}
+        </>
       )}
     </main>
   );
-}
-
-function formatSurvivalTime(seconds: number) {
-  return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
-    .map((part) => String(part).padStart(2, '0'))
-    .join(':');
 }

@@ -7,7 +7,7 @@ import femaleSurvivorUrl from './survivor-female.png';
 import { drawFurniture } from './drawFurniture';
 import { drawHouse } from './drawHouse';
 import { drawScenery } from './drawScenery';
-import type { GameCoordinator, GameState, InteractionTarget } from './gameCoordinator';
+import type { GameCoordinator, GameOverResult, GameState, InteractionTarget } from './gameCoordinator';
 import { itemDefinitions } from './items';
 import groundUrl from './maps/ground.png';
 import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, unproject } from './world';
@@ -23,11 +23,13 @@ const zombieVariantFrames: Record<Exclude<ZombieAppearanceId, 'zombie_civilian'>
 };
 
 const outsideTerrainTiles = 7;
+const survivorDeathAnimationMs = 210;
 type InteractionPromptPosition = { target: InteractionTarget; x: number; y: number };
 
 export class HouseScene extends Phaser.Scene {
   private readonly coordinator: GameCoordinator;
   private readonly showInteractionPrompt: (prompt: InteractionPromptPosition | null) => void;
+  private readonly finishDeathAnimation: (result: GameOverResult) => void;
   private readonly droppedItemArt = new Map<string, Phaser.GameObjects.Image>();
   private readonly combatAudio = createCombatAudio();
   private readonly zombieArt = new Map<string, {
@@ -43,10 +45,16 @@ export class HouseScene extends Phaser.Scene {
   private lastFrameAt: number | undefined;
   private timeSinceSurvivorDeath = 0;
 
-  constructor(coordinator: GameCoordinator, showInteractionPrompt: (prompt: InteractionPromptPosition | null) => void) {
+  constructor(
+    coordinator: GameCoordinator,
+    showInteractionPrompt: (prompt: InteractionPromptPosition | null) => void,
+    finishDeathAnimation: (result: GameOverResult) => void,
+    private readonly reduceMotion: boolean,
+  ) {
     super('house-a');
     this.coordinator = coordinator;
     this.showInteractionPrompt = showInteractionPrompt;
+    this.finishDeathAnimation = finishDeathAnimation;
   }
 
   preload() {
@@ -136,16 +144,32 @@ export class HouseScene extends Phaser.Scene {
     if (lastFrameAt === undefined) return;
 
     const elapsed = Math.min(Math.max(time - lastFrameAt, 0), 50);
+    const terminalState = this.coordinator.getState();
+    if (terminalState.gameOver) {
+      if (this.timeSinceSurvivorDeath >= survivorDeathAnimationMs) return;
+      this.timeSinceSurvivorDeath = Math.min(this.timeSinceSurvivorDeath + elapsed, survivorDeathAnimationMs);
+      this.drawSurvivor(terminalState);
+      if (this.timeSinceSurvivorDeath === survivorDeathAnimationMs) this.finishDeathAnimation(terminalState.gameOver);
+      return;
+    }
+
     const state = this.coordinator.step(elapsed);
-    if (state.survivor.health === 0) this.timeSinceSurvivorDeath += elapsed;
     this.drawSurvivor(state);
     this.drawZombies(state);
     this.drawOcclusion(state, Math.min(1, elapsed / 70));
     this.drawInteractionPrompt();
+    if (state.gameOver) {
+      this.cameras.main.setLerp(0);
+      if (this.reduceMotion) {
+        this.timeSinceSurvivorDeath = survivorDeathAnimationMs;
+        this.finishDeathAnimation(state.gameOver);
+      }
+    }
   }
 
   private onWorldPress = (event: PointerEvent) => {
-    if (event.defaultPrevented || !event.isPrimary || event.pointerType !== 'mouse' || event.button !== 0) return;
+    if (this.coordinator.getState().gameOver || event.defaultPrevented || !event.isPrimary
+      || event.pointerType !== 'mouse' || event.button !== 0) return;
     const bounds = this.game.canvas.getBoundingClientRect();
     const size = this.scale.gameSize;
     const point = this.cameras.main.getWorldPoint(
@@ -194,7 +218,7 @@ export class HouseScene extends Phaser.Scene {
     const frame = survivor.gait === 'idle' || attack ? 0 : 1 + Math.floor(survivor.walkDistance * 6.6) % 6;
     const side = survivor.facingLeft ? -1 : 1;
     let lean = survivor.gait === 'sprint' ? 8 * side : 0;
-    if (fallen) lean = -side * Phaser.Math.Linear(28, 83, Math.min(1, this.timeSinceSurvivorDeath / 210));
+    if (fallen) lean = -side * Phaser.Math.Linear(28, 83, this.timeSinceSurvivorDeath / survivorDeathAnimationMs);
     else if (attack?.phase === 'windup') lean = -11 * side * (1 - attack.remainingMs / batConfig.windupMs);
     else if (attack?.phase === 'contact') lean = 16 * side;
     else if (attack?.phase === 'recovery') lean = 16 * side * attack.remainingMs / batConfig.recoveryMs;
@@ -235,7 +259,7 @@ export class HouseScene extends Phaser.Scene {
       const { attack } = zombie;
       const dead = zombie.health === 0;
       const hitAge = zombie.lastBatHitAtMs === null
-        ? Infinity : activeTimeMs + this.timeSinceSurvivorDeath - zombie.lastBatHitAtMs;
+        ? Infinity : activeTimeMs - zombie.lastBatHitAtMs;
       const hurt = hitAge < damageCueMs;
       const side = zombie.facingLeft ? -1 : 1;
       let lean = zombie.moving ? 4 * Math.sin(zombie.walkDistance * 11) : 0;
