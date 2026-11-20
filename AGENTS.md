@@ -4,10 +4,11 @@ Dead County is an original single-player desktop browser survival game. Build th
 
 ## Work a ticket
 
-1. Open the requested ticket in [.scratch/dead-county-mvp/issues](.scratch/dead-county-mvp/issues). For open-ended implementation requests, choose a ticket whose blockers are complete. [Ticket 01](.scratch/dead-county-mvp/issues/01-walk-through-house-a.md) starts the project.
+1. Open the requested ticket under `.scratch/dead-county-mvp/issues`. For open-ended implementation requests, choose a ticket whose blockers are complete.
 2. Read the relevant PRD requirements, [glossary](GLOSSARY.md), and the design specs and images named in the ticket. The master PRD governs product behavior and scope. The written design specs define presentation and interactions. Use the reference images for composition, style and visual intent. Build artwork and controls as separate usable elements.
 3. Implement the player-visible slice through its normal entry point. Use the planned Phaser, TypeScript, React, Tailwind, Vite, Tiled and Dexie stack where the ticket needs it. Phaser owns authoritative simulation and React renders it through typed commands and state. Keep interim art proportional to the slice. Validate the one-block prototype in-engine before expanding the map or producing full atlases.
 4. Verify every acceptance criterion that the slice can exercise. Use the desktop browser flow first, then focused simulation or IndexedDB checks for repeatable edge cases. For visual work, compare at the default gameplay zoom or the documented screen viewport. Report checks run and any criteria that still need a playtest or later integration.
+5. Record the acceptance evidence in Git history or the pull request, then remove the completed ticket from `.scratch/dead-county-mvp/issues`.
 
 ## Read when the task touches
 
