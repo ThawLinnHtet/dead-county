@@ -1,11 +1,50 @@
 import type Phaser from 'phaser';
 import { batConfig, damageCueMs, shoveConfig } from './combat';
 import type { AttackState } from './combat';
+import type { BatAimPreview } from './gameCoordinator';
 import { project } from './world';
 import type { WorldPoint } from './world';
 import { zombieConfig } from './zombie';
 
 type Graphics = Phaser.GameObjects.Graphics;
+
+export function drawBatAim(reach: Graphics, bracket: Graphics, preview: BatAimPreview | null) {
+  reach.clear();
+  bracket.clear();
+  if (!preview) return;
+
+  const points = preview.arc.map((point) => point && project(point));
+  const center = preview.center && project(preview.center);
+  const origin = project(preview.origin);
+  const opacity = preview.committed ? .83 : .53;
+  for (const [width, color, alpha] of [[3.4, 0x201b15, opacity], [1.35, 0xe3c69b, opacity]] as const) {
+    reach.lineStyle(width, color, alpha).beginPath();
+    for (let i = 1; i < points.length; i += 1) {
+      const first = points[i - 1];
+      const second = points[i];
+      if (first && second) reach.moveTo(first.x, first.y).lineTo(second.x, second.y);
+    }
+    if (center) {
+      reach.moveTo(center.x + (origin.x - center.x) * .24, center.y + (origin.y - center.y) * .24)
+        .lineTo(center.x, center.y);
+    }
+    reach.strokePath();
+  }
+
+  if (preview.target) {
+    const { x, y } = project(preview.target.position);
+    bracket.setDepth(y + .035);
+    for (const [width, color] of [[4, 0x211a12], [1.8, 0xf5d58d]] as const) {
+      bracket.lineStyle(width, color, .95).beginPath();
+      for (const side of [-1, 1]) {
+        bracket.moveTo(x + side * 11, y - 4)
+          .lineTo(x + side * 16, y)
+          .lineTo(x + side * 11, y + 4);
+      }
+      bracket.strokePath();
+    }
+  }
+}
 
 function screenAngle(direction: WorldPoint) {
   const { x, y } = project(direction);

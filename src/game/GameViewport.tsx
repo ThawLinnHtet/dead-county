@@ -88,12 +88,13 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
         return;
       }
       if (event.code === 'KeyE' && displayed) {
-        const result = coordinator.interact(displayed);
-        if (displayed.kind === 'opening' && (result.status === 'opening_changed' || result.status === 'opening_locked')) {
-          scene.playOpeningFeedback(displayed, result.status === 'opening_locked');
+        const target = displayed;
+        const result = coordinator.interact(target);
+        if (target.kind === 'opening' && (result.status === 'opening_changed' || result.status === 'opening_locked')) {
+          scene.playOpeningFeedback(target, result.status === 'opening_locked');
         }
         if (result.status === 'opening_blocked') {
-          feedback.textContent = displayed.kind === 'opening' && displayed.object.type === 'door'
+          feedback.textContent = target.kind === 'opening' && target.object.type === 'door'
             ? 'Doorway blocked' : 'Window blocked';
         } else if (result.status === 'opening_locked') {
           feedback.textContent = 'Cedar Workshop is locked. Check Cedar House for the key, or try the side window.';

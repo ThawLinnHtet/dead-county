@@ -138,7 +138,7 @@ Both characters must support the same gameplay states and animation coverage. Mo
 - Swinging costs zero stamina. A survivor can finish a swing after a nonlethal bite, including at zero stamina. Check reach at contact.
 - Both survivors can take slow steps from wind-up through recovery. A swing immediately slows a sprinting survivor to this pace. The survivor can sprint again when recovery ends and stamina permits.
 - Blocking React UI (including the minimap), pause, death, or an unequipped weapon disables attack input. UI clicks must not pass through to Phaser.
-- No right-click aim stance, push/shove, or alternative weapon action in the MVP. Both default survivors use exactly the same input, attack timing, aim math, effective collision body and reach.
+- Hold right-click to aim and take slower steps. With a bat equipped, the ground arc shows reach and a bracket previews the eligible target using the shared attack rules. Both survivors use the same input, attack timing, collision body, and reach.
 
 ### 5.4 Provisional production animation budgets
 

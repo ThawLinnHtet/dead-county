@@ -129,8 +129,8 @@ export function PlaySession({
           <span>Shove</span>
           {batEquipped && (
             <>
-              <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Right Click</kbd></span>
-              <span aria-label="Hold Right Click to ready">Ready</span>
+              <span className="movement-keys mouse-control items-center" aria-hidden="true"><span>Hold</span><kbd>Right Click</kbd></span>
+              <span aria-label="Hold Right Click to aim">Aim</span>
               <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Left Click</kbd></span>
               <span aria-label="Left Click to swing">Swing</span>
             </>

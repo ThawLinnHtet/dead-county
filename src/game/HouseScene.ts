@@ -7,7 +7,7 @@ import {
 import { batConfig, damageCueMs, shoveConfig } from './combat';
 import { createCombatAudio } from './combatAudio';
 import type { FootSurface } from './combatAudio';
-import { drawBat, drawBiteArms, drawDamageCue, drawShove } from './combatArt';
+import { drawBat, drawBatAim, drawBiteArms, drawDamageCue, drawShove } from './combatArt';
 import femaleSurvivorUrl from './survivor-female.png';
 import { drawFurniture } from './drawFurniture';
 import { drawHouse } from './drawHouse';
@@ -17,7 +17,7 @@ import { itemDefinitions } from './items';
 import { createImpactArt } from './impactArt';
 import { doorKnockIntervalMs, doorStrain, openingCenter } from './shelter';
 import { isArtInView } from './isometricDrawing';
-import { createTerrainTexture, terrainTextureKey } from './terrainTexture';
+import { createTerrainTexture, terrainFrame, terrainTextureKey } from './terrainTexture';
 import { contains, details, furniture, groundTiles, hasLineOfSight, houses, mapHeight, mapWidth,
   openings, project, tileHeight, tileWidth, unproject } from './world';
 import type { WorldPoint, WorldRect } from './world';
@@ -67,6 +67,8 @@ export class HouseScene extends Phaser.Scene {
   private shadow!: Phaser.GameObjects.Ellipse;
   private survivorEffects!: Phaser.GameObjects.Graphics;
   private survivorPack!: Phaser.GameObjects.Graphics;
+  private aimArc!: Phaser.GameObjects.Graphics;
+  private aimBracket!: Phaser.GameObjects.Graphics;
   private soundArt!: Phaser.GameObjects.Graphics;
   private impactArt!: ReturnType<typeof createImpactArt>;
   private soundCue: SoundCue | null = null;
@@ -116,6 +118,8 @@ export class HouseScene extends Phaser.Scene {
     this.shadow = this.add.ellipse(0, 0, 24, 8, 0x282721, .45);
     this.survivorEffects = this.add.graphics();
     this.survivorPack = this.add.graphics();
+    this.aimArc = this.add.graphics().setDepth(-4650);
+    this.aimBracket = this.add.graphics();
     this.soundArt = this.add.graphics();
     this.impactArt = createImpactArt(this, this.reduceMotion);
     const initialState = this.coordinator.getState();
@@ -165,6 +169,7 @@ export class HouseScene extends Phaser.Scene {
       if (paused) {
         this.pointer = null;
         this.showInteractionPrompt(null);
+        drawBatAim(this.aimArc, this.aimBracket, null);
       }
     };
     this.droppedItemArt.clear();
@@ -219,6 +224,7 @@ export class HouseScene extends Phaser.Scene {
     this.impactArt.draw(state.activeTimeMs);
     this.drawSurvivor(state);
     this.drawZombies(state);
+    drawBatAim(this.aimArc, this.aimBracket, this.pointer ? this.coordinator.getBatAimPreview() : null);
     this.drawOcclusion(state, Math.min(1, elapsed / 70));
     this.drawSoundCue(state);
     this.drawInteractionPrompt();
@@ -246,7 +252,7 @@ export class HouseScene extends Phaser.Scene {
             const point = project({ x, y });
             const offMap = x < 0 || x >= mapWidth || y < 0 || y >= mapHeight;
             const tile = offMap ? 1 + Number(Math.abs(x + y * 7) % 5 === 0) : groundTiles[y * mapWidth + x]!;
-            tiles.push(this.add.image(point.x, point.y, terrainTextureKey, tile - 1).setOrigin(.5, 0));
+            tiles.push(this.add.image(point.x, point.y, terrainTextureKey, terrainFrame(tile, x, y)).setOrigin(.5, 0));
             if (!offMap) drawTerrainDetail(detail, x, y, tile);
           }
         }
