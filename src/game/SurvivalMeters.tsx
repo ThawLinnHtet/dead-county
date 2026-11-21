@@ -4,19 +4,22 @@ import { getNeedWarning, roundSurvivalStat, survivalStatNames } from './survival
 import type { Need, SurvivalStat } from './survival';
 import './survivalMeters.css';
 
-export function SurvivalMeters({ coordinator }: { coordinator: GameCoordinator }) {
+export function SurvivalMeters({ coordinator, location }: { coordinator: GameCoordinator; location: string }) {
   const characterId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.characterId);
   const bleeding = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.bleeding);
   const sleeping = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().sleep !== null);
   const restNotice = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().restNotice);
   const female = characterId === 'survivor_female';
   return (
-    <section className="survival-meters" aria-label="Survival stats">
-      <img
-        className="survival-portrait"
-        src={import.meta.env.BASE_URL + (female ? 'assets/ui/survivor-female.webp' : 'assets/ui/survivor-male.webp')}
-        alt={female ? 'Female survivor' : 'Male survivor'}
-      />
+    <section className="survival-meters field-frame" aria-label="Survival stats">
+      <header className="survival-header">
+        <img
+          className="survival-portrait"
+          src={import.meta.env.BASE_URL + (female ? 'assets/ui/survivor-female.webp' : 'assets/ui/survivor-male.webp')}
+          alt={female ? 'Female survivor' : 'Male survivor'}
+        />
+        <p className="survival-location" role="status">{location}</p>
+      </header>
       <div className="survival-meter-list">
         <SurvivalMeter coordinator={coordinator} stat="health" />
         {bleeding && <span className="survival-need-warning" data-level="critical" role="status">Bleeding · Use a bandage</span>}
@@ -41,7 +44,7 @@ function SurvivalMeter({ coordinator, stat }: { coordinator: GameCoordinator; st
       <span className="survival-stat-icon" aria-hidden="true" />
       <label htmlFor={`survivor-${stat}`}>{label}</label>
       <meter id={`survivor-${stat}`} min={0} max={100} value={value} />
-      <span className="survival-stat-value" aria-hidden="true">{value} / 100</span>
+      <span className="survival-stat-value" aria-hidden="true">{value}<span> / 100</span></span>
       {(stat === 'hunger' || stat === 'thirst') && <NeedWarning coordinator={coordinator} need={stat} />}
     </div>
   );

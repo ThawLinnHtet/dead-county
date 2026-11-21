@@ -7,24 +7,22 @@
   background: transparent;
   color: var(--dc-text);
   font: 400 .875rem/1.45 var(--dc-font-body);
+  scrollbar-color: var(--field-border) var(--dc-slot);
 }
 
 .inventory-dialog::backdrop {
-  background: rgb(0 0 0 / 56%);
+  background: rgb(12 12 10 / 59%);
 }
 
 .inventory-shell {
   display: grid;
-  grid-template-columns: minmax(235px, 292px) minmax(215px, 250px);
+  grid-template-columns: minmax(235px, 320px) minmax(215px, 270px);
   overflow: hidden;
-  border: 1px solid var(--dc-border);
-  border-radius: var(--dc-frame-radius);
-  background: var(--dc-frame);
-  box-shadow: var(--dc-frame-shadow);
+  box-shadow: inset 0 0 0 1px rgb(238 218 171 / 10%), 0 14px 34px rgb(10 11 9 / 50%);
 }
 
 .inventory-dialog--loot .inventory-shell {
-  grid-template-columns: minmax(140px, 170px) minmax(235px, 292px) minmax(215px, 250px);
+  grid-template-columns: minmax(150px, 185px) minmax(235px, 320px) minmax(215px, 270px);
 }
 
 .inventory-header {
@@ -33,27 +31,28 @@
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  padding: .5rem .75rem .5rem 1rem;
-  border-bottom: 1px solid var(--dc-border);
+  padding: .65rem .85rem .6rem 1.15rem;
+  border-bottom: 1px solid var(--field-border);
+  background: var(--field-header);
 }
 
 .inventory-header h2 {
   margin: 0;
-  font: 400 2.25rem/1 var(--dc-font-display);
+  font: 400 2.75rem/1 var(--dc-font-display);
   letter-spacing: .05em;
 }
 
 .inventory-panel {
   min-width: 0;
-  padding: 1rem;
+  padding: 1.05rem 1.15rem 1.2rem;
 }
 
 .inventory-panel + .inventory-panel {
-  border-inline-start: 1px solid var(--dc-border);
+  border-inline-start: 1px solid var(--field-seam);
 }
 
 .inventory-panel h3 {
-  margin: 0 0 .6rem;
+  margin: 0 0 .65rem;
   font: 400 1.45rem/1 var(--dc-font-display);
   letter-spacing: .045em;
 }
@@ -61,7 +60,7 @@
 .inventory-slots {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
+  gap: 5px;
 }
 
 .loot-slots {
@@ -73,14 +72,14 @@
 .inventory-drop-area[data-drop-target="true"] {
   outline: 1px dashed var(--dc-focus);
   outline-offset: -5px;
-  background: var(--dc-surface-elevated);
+  background: var(--field-header);
 }
 
 .pack-storage {
   margin-top: .8rem;
   padding: .65rem;
-  border: 1px solid var(--dc-border);
-  background: var(--dc-surface);
+  border: 1px solid var(--field-seam);
+  background: var(--dc-slot);
 }
 
 .pack-storage h3 {
@@ -90,8 +89,8 @@
 }
 
 .pack-storage h3 span {
-  color: var(--dc-text-muted);
-  font: .75rem var(--dc-font-body);
+  color: var(--field-muted);
+  font: .75rem var(--field-numbers);
 }
 
 .pack-slots { grid-template-columns: repeat(6, minmax(0, 1fr)); }
@@ -105,9 +104,9 @@
   place-items: center;
   aspect-ratio: 1;
   min-height: 44px;
-  border: 1px solid var(--dc-border);
+  border: 1px solid var(--field-seam);
   border-radius: 2px;
-  background: var(--dc-slot);
+  background: var(--field-slot);
   box-shadow: inset 0 1px 3px rgb(0 0 0 / 45%);
   user-select: none;
 }
@@ -129,6 +128,7 @@
 .inventory-slot[aria-pressed="true"],
 .inventory-slot[data-equipped="true"] {
   border-color: var(--dc-focus);
+  background: var(--field-header);
 }
 
 .inventory-slot[data-equipped="true"] {
@@ -182,10 +182,10 @@
 .inventory-close,
 .inventory-action {
   min-height: 44px;
-  border: 1px solid var(--dc-border);
+  border: 1px solid var(--field-border);
   border-radius: var(--dc-frame-radius);
   padding: .35rem .65rem;
-  background: var(--dc-frame);
+  background: linear-gradient(130deg, rgb(173 144 98 / 15%), transparent 74%), var(--dc-surface);
   color: var(--dc-text);
   font: 400 1.15rem/1 var(--dc-font-display);
   letter-spacing: .045em;
@@ -193,25 +193,26 @@
 }
 
 .inventory-close {
-  width: 44px;
-  padding: 0;
-  font: 500 1.5rem/1 var(--dc-font-body);
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+  padding-inline: .65rem;
 }
 
 .inventory-close:hover,
 .inventory-action:enabled:hover {
   border-color: var(--dc-focus);
-  background-color: var(--dc-surface-elevated);
+  background-color: var(--dc-accent-pressed);
 }
 
 .inventory-action--primary:enabled {
-  border-color: var(--dc-accent-hover);
+  border-color: #9b8961;
   background-color: var(--dc-accent-pressed);
 }
 
 .inventory-action:disabled {
   background: var(--dc-slot);
-  color: var(--dc-text-muted);
+  color: var(--field-muted);
   cursor: default;
 }
 
@@ -251,7 +252,7 @@
 .inventory-feedback,
 .inventory-hint {
   margin: 0;
-  color: var(--dc-text-muted);
+  color: var(--field-muted);
   font-size: .75rem;
 }
 
@@ -259,8 +260,8 @@
 
 .inventory-carry {
   margin: 0 0 .55rem;
-  color: var(--dc-text-muted, #c0b5a5);
-  font-size: .75rem;
+  color: var(--field-muted);
+  font: 500 .8rem/1.5 var(--field-numbers);
   font-variant-numeric: tabular-nums;
 }
 
@@ -276,21 +277,25 @@
 .item-detail-heading {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-bottom: .55rem;
-  border-bottom: 1px solid var(--dc-border);
+  gap: .7rem;
+  padding-bottom: .75rem;
+  border-bottom: 1px solid var(--field-seam);
 }
 
 .item-detail-heading .item-icon {
-  flex: 0 0 34px;
-  width: 34px;
+  flex: 0 0 3rem;
+  width: 3rem;
+  padding: .25rem;
+  border: 1px solid var(--field-border);
+  border-radius: 2px;
+  background: var(--field-slot);
 }
 
 .item-detail-heading h3 { margin: 0; }
 
 .item-detail-heading p,
 .inventory-muted {
-  color: var(--dc-text-muted);
+  color: var(--field-muted);
 }
 
 .item-detail-heading p { margin: 0; }
@@ -302,9 +307,9 @@
   width: max-content;
   transform: translate(-50%, -100%);
   padding: 4px 8px 4px 5px;
-  border: 1px solid #9e9277;
+  border: 1px solid var(--field-border);
   border-radius: 3px;
-  background: var(--dc-surface);
+  background: var(--field-metal);
   color: var(--dc-text);
   box-shadow: 0 2px 7px rgb(0 0 0 / 55%);
   font: 600 .875rem/1.4 Inter, Arial, sans-serif;
@@ -318,9 +323,9 @@
   margin: 0;
   padding: .35rem .65rem;
   transform: translateX(-50%);
-  border: 1px solid #9e9277;
+  border: 1px solid var(--field-border);
   border-radius: 3px;
-  background: var(--dc-surface);
+  background: var(--field-metal);
   color: var(--dc-text);
   font: 600 .875rem/1.4 Inter, Arial, sans-serif;
   pointer-events: none;
@@ -342,8 +347,8 @@
   padding: 1px 5px;
   margin-right: 4px;
   border-radius: 2px;
-  background: var(--dc-text);
-  color: var(--dc-surface);
+  background: var(--dc-warning);
+  color: var(--dc-bg);
   font-weight: 700;
 }
 
@@ -354,7 +359,7 @@
   .inventory-dialog--loot .item-details {
     grid-column: 1 / -1;
     border-inline-start: 0;
-    border-top: 1px solid var(--dc-border);
+    border-top: 1px solid var(--field-seam);
   }
 }
 
@@ -363,7 +368,7 @@
   .inventory-dialog--loot .inventory-shell { grid-template-columns: minmax(0, 22rem); }
   .inventory-panel + .inventory-panel {
     border-inline-start: 0;
-    border-top: 1px solid var(--dc-border);
+    border-top: 1px solid var(--field-seam);
   }
   .loot-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

@@ -126,27 +126,3 @@
 .pause-menu__recovery .pause-menu__action {
   justify-content: center;
 }
-
-.survival-clock {
-  position: absolute;
-  z-index: 2;
-  top: clamp(1rem, 3vw, 2.5rem);
-  right: clamp(1rem, 3vw, 2.5rem);
-  display: grid;
-  gap: .15rem;
-  padding: .55rem .75rem;
-  border: 1px solid var(--dc-border);
-  border-radius: var(--dc-frame-radius);
-  background: var(--dc-frame);
-  box-shadow: var(--dc-frame-shadow);
-  color: var(--dc-text);
-  font: 400 .95rem/1.1 var(--dc-font-display);
-  letter-spacing: .045em;
-  text-align: center;
-}
-
-.survival-clock time {
-  font: 600 .87rem/1.4 var(--dc-font-body);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0;
-}

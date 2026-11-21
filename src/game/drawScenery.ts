@@ -1,4 +1,4 @@
-import { at, box, floor, inset, nearDepth, noise, screenShape, stroke } from './isometricDrawing';
+import { at, box, floor, inset, nearDepth, noise, screenShape, shape, stroke } from './isometricDrawing';
 import { lawnVariation } from './terrainTexture';
 import { drawParkedCar, drawTree } from './sceneryProps';
 import { details, mapWidth, outdoorProps, project } from './world';
@@ -11,6 +11,15 @@ export function drawTerrainDetail(ground: Art, x: number, y: number, tile: numbe
   if (tile === 3 && noise(seed) > .88) {
     const p = at(x + .1 + noise(seed + 8) * .55, y + .23 + noise(seed + 16) * .4);
     stroke(ground, 0x272a27, [p, at(p.x + .18, p.y + .12), at(p.x + .2, p.y + .29), at(p.x + .34, p.y + .31)], 1, .5);
+  }
+  if (tile === 4 && x >= 14 && x <= 23 && y < 22 && noise(seed) > .4) {
+    for (let index = 0; index < 4; index += 1) {
+      const leaf = seed + index * 71;
+      const p = at(x + noise(leaf + 12) * .13, y + .13 + noise(leaf + 19) * .74);
+      stroke(ground, index === 0 ? 0x5f6542 : 0x806445, [
+        p, at(p.x + .025 + noise(leaf) * .05, p.y + .032),
+      ], 1.6, .78);
+    }
   }
   if (tile > 2) return;
   const growth = lawnVariation(x + 16, y - 12);
@@ -61,6 +70,9 @@ export function drawScenery(scene: Phaser.Scene) {
   }
   for (const object of outdoorProps) {
     const art = scene.add.graphics().setDepth(nearDepth(object));
+    if ((object.type === 'fence' || object.type === 'privacy_fence') && object.x < 18 && object.y < 22) {
+      drawStarterFenceGround(ground, object);
+    }
     if (object.type === 'tree') drawTree(art, ground, object);
     if (object.type === 'car') drawParkedCar(art, ground, object);
     if (object.type === 'road_barrier') roadBarrier(art, object);
@@ -72,6 +84,30 @@ export function drawScenery(scene: Phaser.Scene) {
       box(art, inset(object, .067), 18, [0x9e8d6d, 0x5b5142, 0x897660]);
       box(art, inset(object, -.075), 8, [0x9e9a88, 0x65665b, 0x817e6e], 16);
     }
+  }
+}
+
+function drawStarterFenceGround(ground: Art, rect: MapObject) {
+  const tall = rect.type === 'privacy_fence';
+  const alongX = rect.width > rect.height;
+  const start = at(rect.x + (alongX ? 0 : rect.width), rect.y + (alongX ? rect.height : 0));
+  const end = at(rect.x + rect.width, rect.y + rect.height);
+  const east = tall ? .96 : .48;
+  const south = tall ? .58 : .29;
+  for (const [scale, opacity] of [[1, .26], [.73, .14]] as const) {
+    shape(ground, 0x22291e, [start, end,
+      at(end.x + east * scale, end.y + south * scale),
+      at(start.x + east * scale, start.y + south * scale),
+    ], opacity);
+  }
+  const length = alongX ? rect.width : rect.height;
+  const seed = Math.floor(rect.x * 127 + rect.y * 587);
+  for (let i = 0; i < length * 7; i += 1) {
+    const along = noise(seed + i * 37) * length;
+    const verge = -.11 - noise(seed + i * 89) * .23;
+    const x = rect.x + (alongX ? along : verge);
+    const y = rect.y + (alongX ? verge : along);
+    grassTuft(ground, x, y, seed + i * 113, .7 + noise(seed + i * 43) * .48);
   }
 }
 

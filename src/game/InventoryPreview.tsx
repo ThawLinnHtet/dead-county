@@ -14,12 +14,13 @@ export function InventoryPreview({ coordinator, onOpenInventory, onReturnToWorld
   const swinging = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.attack !== null);
 
   return (
-    <section className="inventory-preview" aria-label="Quick inventory">
+    <section className="inventory-preview field-frame" aria-label="Quick inventory">
       <div className="inventory-preview__header">
         <p className="inventory-preview__weapon" role="status" data-equipped={equippedId !== null}>
           {equippedId ? 'Equipped Baseball Bat' : 'Unarmed'}
         </p>
-        <button className="inventory-preview__shortcut" type="button" onClick={() => onOpenInventory()}>
+        <button className="inventory-preview__shortcut" type="button" aria-haspopup="dialog"
+          aria-keyshortcuts="I" onClick={() => onOpenInventory()}>
           <kbd aria-hidden="true">I</kbd> Inventory
         </button>
       </div>

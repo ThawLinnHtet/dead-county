@@ -271,10 +271,11 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
       onKeyDown={keepFocusInside}
       onDragEnd={endDrag}
     >
-      <div className="inventory-shell">
+      <div className="inventory-shell field-frame">
         <header className="inventory-header">
           <h2>{container ? 'Loot' : 'Inventory'}</h2>
-          <button ref={close} className="inventory-close" type="button" aria-label="Close" onClick={coordinator.closeInventoryPanel}>×</button>
+          <button ref={close} className="inventory-close" type="button" aria-keyshortcuts="Escape"
+            onClick={coordinator.closeInventoryPanel}>Close <kbd aria-hidden="true">Esc</kbd></button>
         </header>
         {container && (
             <section className="inventory-panel loot-source inventory-drop-area" aria-label="Container contents"
