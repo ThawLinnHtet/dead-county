@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator.ts';
 import type { GameCoordinator } from '../game/gameCoordinator.ts';
-import { canOccupy, contains, houses } from '../game/world.ts';
+import { canOccupy, contains, houses, initiallyClosed } from '../game/world.ts';
 import type { WorldPoint } from '../game/world.ts';
 import type { ZombieState } from '../game/zombie.ts';
 import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
@@ -13,8 +13,10 @@ const farAway = { x: 4, y: 2 };
 // The navigation grid cell is half a world tile.
 const positionTolerance = .001 * .5;
 
-function encounter(survivor: WorldPoint, firstZombie: Partial<ZombieState>) {
-  const initial = captureRun(createGameCoordinator({ position: survivor }));
+function encounter(survivor: WorldPoint, firstZombie: Partial<ZombieState>, openDoor?: string) {
+  const initial = captureRun(createGameCoordinator({
+    position: survivor, closedOpeningIds: initiallyClosed.filter((id) => id !== openDoor),
+  }));
   return restoreGameCoordinator({
     ...initial,
     zombies: initial.zombies.map((zombie, index) => index === 0 ? { ...zombie, ...firstZombie } : zombie),
@@ -113,7 +115,7 @@ test('a returning sight line reacquires on the same active step after Continue',
   const original = encounter(visibleSurvivor, {
     position: { x: 16.3, y: 8.2 },
     behavior: { kind: 'chase', lastKnownPosition: { x: 14.75, y: 8.2 }, graceRemainingMs: 400 },
-  });
+  }, 'house_a_door');
   const continued = pauseAndContinue(original);
   const acquired = matchedStep(original, continued, 20).zombies[0]!;
   assert.deepEqual(acquired.behavior, { kind: 'chase', lastKnownPosition: visibleSurvivor, graceRemainingMs: null });
@@ -123,7 +125,7 @@ test('a wandering zombie keeps its doorway route and an idle zombie retains its 
   const original = encounter(farAway, {
     position: { x: 16.2, y: 8.2 },
     behavior: { kind: 'wander', destination: { x: 7.2, y: 8.1 }, idleRemainingMs: 0 },
-  });
+  }, 'house_a_door');
   const idleSnapshot = captureRun(original);
   const game = restoreGameCoordinator({
     ...idleSnapshot,

@@ -1,6 +1,6 @@
 # Dead County — Master Product Requirements Document (PRD)
 
-> **Version 2.25 · 2026-11-21**
+> **Version 2.29 · 2026-11-21**
 >
 > **Status:** Approved MVP product scope; final production geometry, UI screen mockups, and asset atlases remain subject to implementation validation  
 > **Product:** Dead County — original 2D isometric zombie-survival game inspired by the genre of *Project Zomboid*  
@@ -40,6 +40,22 @@
 | **v2.23** | **2026-11-21** | Expanded the connected neighborhood. Added interactive entrances, noise investigation, day and night, bleeding treatment, and schema-one migration. |
 | **v2.24** | **2026-11-21** | Added survivor visibility, sneaking, directional audio and animation, ready stance, shove, carry limits, and door reinforcement. |
 | **v2.25** | **2026-11-21** | Tuned directional awareness, ready footwork, exertion from a carried load, and feedback as doors weaken. |
+| **v2.26** | **2026-11-21** | Added backpack storage, persistent stashes and a playable first night. |
+| **v2.27** | **2026-11-21** | Made exterior doors start closed and unlocked in fresh runs. |
+| **v2.28** | **2026-11-21** | Added one optional locked workshop with a recoverable key and side-window entry. |
+| **v2.29** | **2026-11-21** | Added confirmed-hit blood and audio, surface footsteps, ambient sound, and clearer wall and doorway rendering. |
+
+### First-night milestone
+
+The survivor can take supplies from one building and stash them in another. Inventory and Loot still pause simulation. The equipped Canvas Backpack has six slots of its own and adds to the carried weight limit. Players can drag items directly between the open cupboard, backpack and pockets or use labeled buttons. An empty cupboard can reopen for storage. Each transfer moves one existing item instance, and the survivor must unequip a worn item before packing or storing it.
+
+Fatigue rises while awake and reduces stamina recovery once fatigue exceeds 35. An indoor bed allows a short nap by day or sleep until 06:00 after 20:00 and before dawn. The survivor must be tired enough and cannot start sleeping with critical needs, active bleeding, an unfinished swing, or immediately detectable danger. Sleeping runs the ordinary simulation faster. It recovers fatigue, advances hunger and thirst, and can end early if those needs become critical or a zombie threatens the survivor or breaches the shelter. Sleep offers no Health recovery. The player can wake early with **E**.
+
+The save stores cupboard and backpack contents, fatigue, and remaining sleep. Existing saves migrate with their item locations intact and start with empty backpack storage and zero fatigue.
+
+- At normal zoom, the player can identify the equipped backpack and bat and see the difference between approaching, backing away in ready stance, and recovering from a swing.
+- The player can bring House B’s can home in the backpack, store it in House A’s starter cupboard, and find the same can after Continue.
+- A prepared survivor can close the entrance, sleep, and wake the next morning. A zombie that forces the entrance during sleep wakes the survivor and can enter through the opened doorway.
 
 ---
 
@@ -115,7 +131,7 @@ Do not pull post-MVP capabilities into a milestone because an asset or design mo
 |---|---|---|
 | Players | 2 selectable default characters: male/female; same mechanics | Character creator, alternate outfits, traits, leveling |
 | Environment | 1 handcrafted isometric neighborhood; roads, yards, sidewalks, fences, static cars and props | Open-world streaming, large cities, generated regions, destruction |
-| Buildings | 21 enterable destinations, seamless entry, operable openings, door pressure and wedges | Multistory floors, locks, and construction |
+| Buildings | 21 enterable destinations, seamless entry, operable openings, door pressure, wedges, and one authored lock | Multistory floors, wider lock distribution, and construction |
 | Enemies | 10–20 active zombies, five visual variants, line of sight and sound investigation, FSM and A* navigation | Fast/strong classes, hordes, advanced AI, NPC enemies |
 | Combat | Baseball Bat, ready stance, stamina-costing shove, timed attacks and recovery | Firearms, ammunition, durability, multiple weapons, skills |
 | Player stats | Health, stamina, hunger, thirst; elapsed survival duration | Temperature, disease/infection, sleep, deep injuries |
@@ -148,7 +164,7 @@ The Corner Store, Birch Clinic, Cedar Workshop and the other authored landmarks 
 ### 4.2 Explore and enter houses
 
 1. Use WASD to move outdoors, with Shift to sprint while stamina permits.
-2. Enter an open doorway by **walking across the threshold**; no `E` to enter, loading screen, teleport, world swap or camera cut.
+2. Open a closed door with **E**, then **walk across the threshold** in the same continuous world. Exterior doors start closed on a fresh run. Cedar Workshop is the sole locked door at the start. Continue restores each saved opening and lock state.
 3. Roof automatically hides/fades for the house currently occupied by the player; blocking near walls selectively fade when necessary.
 4. Move and fight using the same controls, camera, world and simulation as outdoors.
 5. Walk back outside; roof returns without flicker.
@@ -216,6 +232,8 @@ The Corner Store, Birch Clinic, Cedar Workshop and the other authored landmarks 
 - **FR-W21:** Update world lighting and zombie sight reach from the in-game clock. The clock starts at 08:00. One full day takes 12 minutes of active play at the first tuning pass.
 - **FR-W22:** A survivor can use a Door Wedge from inside beside a reachable closed door. The wedge is consumed once and extends the door's resistance to zombies approaching a confirmed last known position. Pursuit still expires in active simulation time. Opening or forcing the door clears its pressure and wedge state.
 - **FR-W23:** Play distinct door impacts as pressure builds. Show progressively visible damage and label a reachable door **Strained** or **Near failure** according to its remaining resistance. Recalculate the warning when a wedge increases that resistance.
+- **FR-W24:** Cedar Workshop's exterior door starts locked on a fresh run. The neighboring Cedar House cabinet holds one Workshop Key. **E** can unlock and open the workshop door with the key in pockets or the worn backpack. The door also opens from inside after entering through the operable side window. Unlocking preserves the key, and the door remains unlocked after closing. A zombie breach clears the lock. Save and Continue preserve the door and key state. Older runs retain their original workshop access.
+- **FR-W25:** Sort foreground wall sections at their local depth. Preserve solid lower edges during a cutaway, fade upper partitions where they cover the survivor, and render wide-open door leaves against the adjacent wall. Sweep movement against the same solid geometry used for zombie navigation.
 
 ### 5.3 Map dimensions and asset conventions
 
@@ -334,7 +352,7 @@ With 20 active zombies, wandering, detection, chase, attack, death and doorway n
 - **FR-C20:** A nonlethal hit lets an ongoing swing or bite finish. Resolve reach and obstruction at contact using the actors' current positions, including any prior knockback. Death ends the actor's attack.
 - **FR-C21:** A swing costs zero stamina and can start at zero stamina. The usual wind-up, slow steps and recovery still apply.
 - **FR-C22:** Inventory and pause overlays own the entire pointer gesture on their controls, including release over the world after the overlay closes. Clicking Use, a slot, Close or Resume produces zero new attack commands, immediately or on the next gameplay step. A fresh press in the active gameplay world is required for the next swing.
-- **FR-C23:** A hit and a miss use the same bat swing animation and a short swing sound. Confirmed damage adds a distinct impact sound and one brief visual cue on the zombie that took the hit. The impacted zombie must be identifiable at default zoom with audio muted. Use the actual damage event to time the cue.
+- **FR-C23:** A hit and a miss use the same bat swing animation and swing sound. Confirmed bat hits add a separate impact sound, recoil, and a restrained blood burst. Confirmed bites play their own sound and mark the survivor's impact point. The impacted actor must be identifiable at default zoom with audio muted. Use the actual damage event to time these cues and keep reduced-motion feedback readable.
 - **FR-C24:** A zombie bite has a visually distinct anticipation pose before contact, then a bite motion and a readable recovery. The pose is readable at default zoom. Playtest whether a newcomer recognizes it in time to try stepping clear. Damage timing and reach follow the gameplay rules.
 - **FR-C25:** Holding the right mouse button in the world keeps the survivor facing their aim and slows movement. Pressing Space spends Stamina to commit a short shove. The shove selects one visible, in-range target with the deterministic attack ordering and staggers it without damage. It freezes with other attacks during pauses and survives Continue.
 - **FR-C26:** In the ready stance, side steps are slower than forward steps and back steps are slower than side steps. Shove recovery delays Stamina regeneration. Apply only the portion of a shove's displacement that fits before solid geometry.

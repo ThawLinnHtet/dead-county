@@ -101,7 +101,7 @@ The player must be **in interaction range** of the specific container and have a
 
 ### 4.3 Door and interior behavior
 
-- House entrances start open on a fresh run. The player walks across an open threshold with WASD. Press E at the contextual Open or Close prompt to operate the door.
+- Exterior doors start closed on a fresh run. Press **E** at **Open door** and walk across the threshold with WASD. Cedar Workshop shows **Locked door**, **Unlock door** with the key, or **Unlatch door** from inside. Continue restores each opening's saved state.
 - Show the wedged state in the door prompt. The player applies a wedge through Inventory from inside beside the closed door.
 - Entering makes that house's roof hide/fade automatically (with wall occlusion handled by the approved interior system).
 - When an indoor cabinet, drawer or supply box wins selection, anchor `E Search` at that container.

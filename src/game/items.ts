@@ -32,10 +32,13 @@ export const itemDefinitions = {
     use: { stat: 'hunger', change: -27, noBenefit: 'Hunger is already at zero.' },
   },
   backpack: {
-    name: 'Canvas Backpack', category: 'Gear', description: 'Equip it to carry up to 9 kg across your inventory slots.', weight: .6,
+    name: 'Canvas Backpack', category: 'Gear', description: 'Equip it to open six storage slots and carry up to 9 kg.', weight: .6,
   },
   door_wedge: {
     name: 'Door Wedge', category: 'Shelter', description: 'Use beside a closed door from inside to resist forced entry.', weight: .25,
+  },
+  workshop_key: {
+    name: 'Workshop Key', category: 'Key', description: 'Carry it in your inventory or worn backpack to unlock Cedar Workshop.', weight: .05,
   },
 } as const;
 
@@ -44,13 +47,19 @@ export const inventoryQuickSlotCount = 10;
 export type ConsumableStat = 'health' | 'hunger' | 'thirst';
 export const baseCarryCapacity = 5;
 export const backpackCapacity = 9;
+export const backpackSlots = 6;
+export const containerSlots = 16;
 export interface ItemInstance {
   readonly id: string;
   readonly kind: ItemKind;
 }
 
-export function carriedLoad(inventory: readonly (ItemInstance | null)[], packId: string | null) {
-  const total = inventory.reduce((sum, item) => sum + (item ? itemDefinitions[item.kind].weight : 0), 0);
+export function itemWeight(item: ItemInstance, packs: ContainerContents) {
+  return itemDefinitions[item.kind].weight + (packs[item.id] ?? []).reduce((sum, entry) => sum + itemDefinitions[entry.kind].weight, 0);
+}
+
+export function carriedLoad(inventory: readonly (ItemInstance | null)[], packId: string | null, packs: ContainerContents = {}) {
+  const total = inventory.reduce((sum, item) => sum + (item ? itemWeight(item, packs) : 0), 0);
   const weight = Math.round(total * 100) / 100;
   const exertion = Math.min(1, Math.max(0, (weight - 3.5) / (backpackCapacity - 3.5)));
   return { weight, capacity: packId ? backpackCapacity : baseCarryCapacity, exertion };
@@ -91,6 +100,7 @@ const indoorContainers = furniture.flatMap((object) => {
 });
 const interactionReach = 1.35;
 const dropRadius = .17;
+const indoorBeds = furniture.filter(({ type }) => type === 'bed');
 
 export function seedContainers(stock: ContainerStock): ContainerContents {
   return Object.fromEntries(indoorContainers.flatMap(({ object }) => {
@@ -105,14 +115,25 @@ export function reachableContainers(
   houseId: string | null,
   contents: ContainerContents, sight = hasLineOfSight,
 ): { object: MapObject; distance: number }[] {
-  return indoorContainers.flatMap(({ object, houseId: containerHouse }) => {
-    if (houseId !== containerHouse || !contents[object.name]?.length) return [];
+  return reachableFurniture(position, indoorContainers.flatMap(({ object, houseId: containerHouse }) =>
+    houseId === containerHouse && Object.hasOwn(contents, object.name) ? [object] : []), sight);
+}
+
+export function reachableBeds(position: WorldPoint, houseId: string | null, sight = hasLineOfSight) {
+  const house = houses.find(({ name }) => name === houseId);
+  return house ? reachableFurniture(position, indoorBeds.filter((bed) => contains(house, {
+    x: bed.x + bed.width / 2, y: bed.y + bed.height / 2,
+  })), sight) : [];
+}
+
+function reachableFurniture(position: WorldPoint, objects: readonly MapObject[], sight: typeof hasLineOfSight) {
+  return objects.flatMap((object) => {
     const x = Math.min(Math.max(position.x, object.x), object.x + object.width);
     const y = Math.min(Math.max(position.y, object.y), object.y + object.height);
     const distance = Math.hypot(x - position.x, y - position.y);
     if (distance > interactionReach || distance === 0) return [];
 
-    // Test just short of the cabinet surface so its own collision does not block the search.
+    // Test just short of the surface so the object's own collision does not block the interaction.
     const edge = {
       x: x + (position.x - x) * .005 / distance,
       y: y + (position.y - y) * .005 / distance,

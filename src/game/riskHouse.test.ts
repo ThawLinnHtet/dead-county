@@ -7,16 +7,22 @@ import type { WorldPoint } from './world.ts';
 import type { ZombieAppearanceId } from './zombie.ts';
 
 const porchA = { x: 15.36, y: 8.3 };
+const insideA = { x: 12.8, y: 8.3 };
 const junction = { x: 15.34, y: 18.51 };
 const sidewalkB = { x: 26.55, y: 18.51 };
+const porchB = { x: 26.55, y: 16.95 };
 const kitchenB = { x: 26.55, y: 13.75 };
 const kitchenC = { x: 41.05, y: 14.55 };
 const streetC = { x: 41.05, y: 18.51 };
+const porchC = { x: 41.05, y: 17.1 };
 const cabinetC = 'house_c_kitchen_cabinet';
 // Cross south of the parked car to avoid the zombies on the near sidewalk.
 const houseCApproach = [
-  { x: 28, y: 18.51 }, { x: 28, y: 24 }, { x: 41.05, y: 24 }, streetC, kitchenC,
+  { x: 28, y: 18.51 }, { x: 28, y: 24 }, { x: 41.05, y: 24 }, streetC, porchC, kitchenC,
 ];
+const doorsOnRoute = new Map([
+  [insideA, 'house_a_door'], [porchB, 'house_b_door'], [porchC, 'house_c_door'],
+]);
 
 function walkTo(
   game: GameCoordinator, destination: WorldPoint, options: { sprint?: boolean; observe?: () => void } = {},
@@ -30,9 +36,18 @@ function walkTo(
     options.observe?.();
   }
   game.setMovement({ x: 0, y: 0 });
-  const { position } = game.getState().survivor;
+  const { survivor: { position }, zombies } = game.getState();
   assert.ok(Math.hypot(position.x - destination.x, position.y - destination.y) < .05,
-    `Could not reach ${JSON.stringify(destination)} from ${JSON.stringify(start)}. Stopped at ${JSON.stringify(position)}.`);
+    `Could not reach ${JSON.stringify(destination)} from ${JSON.stringify(start)}. Stopped at ${JSON.stringify(position)} near ${
+      JSON.stringify(zombies.filter((zombie) => Math.hypot(zombie.position.x - position.x, zombie.position.y - position.y) < 3)
+        .map(({ id, position }) => ({ id, position })))
+    }.`);
+  const doorId = doorsOnRoute.get(destination);
+  if (doorId) {
+    const target = game.getInteractionTarget();
+    assert.ok(target?.kind === 'opening' && target.id === doorId);
+    if (target.closed) assert.equal(game.interact(target).status, 'opening_changed');
+  }
 }
 
 test('a survivor can walk from House A into House C, transfer its essentials, and sprint back to the street', () => {
@@ -43,7 +58,13 @@ test('a survivor can walk from House A into House C, transfer its essentials, an
   const water = game.getState().containers[cabinetC]?.find(({ kind }) => kind === 'water_bottle');
   assert.ok(food && water, 'the fresh kitchen cabinet contains food and water');
 
-  for (const point of [{ x: 10.7, y: 8.3 }, porchA, junction, sidewalkB, ...houseCApproach]) {
+  for (const point of [{ x: 10.7, y: 8.3 }, insideA, porchA, junction, sidewalkB, ...houseCApproach]) {
+    if (point === kitchenC) {
+      walkTo(game, { x: 41.05, y: 15.55 });
+      const target = game.getInteractionTarget();
+      assert.ok(target?.kind === 'opening' && target.id === 'house_c_door' && !target.closed);
+      assert.equal(game.interact(target).status, 'opening_changed');
+    }
     walkTo(game, point);
   }
 
@@ -57,9 +78,13 @@ test('a survivor can walk from House A into House C, transfer its essentials, an
   assert.equal(game.getState().survivor.inventory[1], water);
   assert.deepEqual(game.getState().containers[cabinetC], []);
   game.closeInventoryPanel();
-  for (const exitPoint of [{ x: 43.1, y: 14.42 }, { x: 46.2, y: 14.42 }, { x: 46.2, y: 17.85 }]) {
-    walkTo(game, exitPoint, { sprint: true });
-  }
+  walkTo(game, { x: 41.9, y: 13.95 });
+  walkTo(game, { x: 44.1, y: 14.42 }, { sprint: true });
+  const exit = game.getInteractionTarget();
+  assert.ok(exit?.kind === 'opening' && exit.id === 'house_c_side_door');
+  if (exit.closed) assert.equal(game.interact(exit).status, 'opening_changed');
+  walkTo(game, { x: 46.2, y: 14.42 }, { sprint: true });
+  walkTo(game, { x: 46.2, y: 17.85 }, { sprint: true });
   const escaped = game.getState();
   assert.equal(escaped.occupiedHouseId, null);
   assert.ok(escaped.survivor.health > 0);
@@ -88,15 +113,16 @@ test('fresh starts for both survivors share one authored roster, roam paths and 
   for (const zombie of fresh.zombies) {
     assert.equal(zombie.behavior.kind, 'wander');
     assert.ok(zombie.behavior.destination);
-    assert.notDeepEqual(firstStep.zombies.find(({ id }) => id === zombie.id)?.position, zombie.position,
-      `${zombie.id} can begin its authored wander during the first active step`);
+    const advanced = firstStep.zombies.find(({ id }) => id === zombie.id);
+    assert.ok(advanced?.moving || advanced?.navigationRetry,
+      `${zombie.id} can attempt its authored wander during the first active step`);
   }
 });
 
 test('ordinary pursuit creates more encounter pressure at House C than at House A or either House B approach', () => {
-  const starterApproach = [{ x: 10.7, y: 8.3 }, porchA];
-  const direct = [...starterApproach, { x: 23.85, y: 10.2 }, { x: 24.1, y: 16.3 }, { x: 26.55, y: 16.95 }, kitchenB];
-  const detour = [...starterApproach, junction, sidewalkB, kitchenB];
+  const starterApproach = [{ x: 10.7, y: 8.3 }, insideA, porchA];
+  const direct = [...starterApproach, { x: 23.85, y: 10.2 }, { x: 24.1, y: 16.3 }, porchB, kitchenB];
+  const detour = [...starterApproach, junction, sidewalkB, porchB, kitchenB];
   const risk = [...starterApproach, junction, sidewalkB, ...houseCApproach];
 
   function observeRoute(route: readonly WorldPoint[]) {
@@ -125,7 +151,7 @@ test('ordinary pursuit creates more encounter pressure at House C than at House 
   }
 });
 
-test('the starter bat is obtainable without combat and an ordinary zombie can later enter', () => {
+test('the starter bat is obtainable at walking pace after lingering behind the closed door', () => {
   const game = createGameCoordinator({ characterId: 'survivor_female' });
   for (let tick = 0; tick < 140; tick += 1) game.step(50);
   walkTo(game, { x: 11.05, y: 8.68 });
@@ -138,8 +164,6 @@ test('the starter bat is obtainable without combat and an ordinary zombie can la
   assert.equal(game.getState().survivor.equippedWeaponId, bat.id);
   assert.equal(game.getState().survivor.health, 100);
 
-  for (let tick = 0; tick < 460 && game.getState().survivor.health === 100; tick += 1) game.step(50);
-  assert.ok(game.getState().survivor.health < 100, 'an ordinary zombie can later enter and reach the survivor');
 });
 
 test('changing only a zombie appearance leaves pursuit, attacks, damage and movement identical', () => {

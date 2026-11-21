@@ -36,6 +36,14 @@
 .survival-meter[data-stat="stamina"] { --survival-stat-color: var(--dc-stamina); }
 .survival-meter[data-stat="hunger"] { --survival-stat-color: var(--dc-hunger); }
 .survival-meter[data-stat="thirst"] { --survival-stat-color: var(--dc-thirst); }
+.survival-meter[data-stat="fatigue"] { --survival-stat-color: #bfabcf; }
+.survival-meter[data-stat="fatigue"] .survival-stat-icon {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  box-shadow: -4px 2px 0 #bfabcf;
+  transform: translate(3px, -2px);
+}
 
 .survival-stat-icon {
   width: .75rem;

@@ -208,7 +208,7 @@ Distinguish the three using siding/roof hue, porch/fence geometry, room organiza
 | Both player survivors | Idle, walk, sprint, melee bat attack, death | Locomotion follows actual movement. A confirmed bite gives a brief reaction. |
 | Zombie | Idle, wander/walk, chase/walk, attack, death | Chase can reuse movement frames. Give the bite a clear anticipation silhouette and recovery. |
 | Loot and inventory | Transfer, Equip and Use feedback | Highlight the receiving slot, show an equipped mark and show the stat changed by Use. |
-| Combat | Bat swing and confirmed damage cues | Use a short swing sound for hits and misses. A confirmed hit adds distinct impact audio and a visual cue on the damaged zombie. |
+| Combat | Bat swing and confirmed damage cues | Play a short swing sound for hits and misses. Confirmed hits and bites trigger distinct impact sounds, brief recoil, and localized blood with restrained floor marks. |
 | World | Basic roof visibility transition | No weather or day/night animation |
 
 ### Directional rules

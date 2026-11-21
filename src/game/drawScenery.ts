@@ -6,16 +6,16 @@ type Art = Phaser.GameObjects.Graphics;
 
 export function drawTerrainDetail(ground: Art, x: number, y: number, tile: number) {
   const seed = x * 123 + y * 793;
-  if (tile === 3 && noise(seed) > .65) {
+  if (tile === 3 && noise(seed) > .88) {
     const p = at(x + .1 + noise(seed + 8) * .55, y + .23 + noise(seed + 16) * .4);
     stroke(ground, 0x272a27, [p, at(p.x + .18, p.y + .12), at(p.x + .2, p.y + .29), at(p.x + .34, p.y + .31)], 1, .5);
   }
   if (tile > 2) return;
-  const selections = noise(seed) > .72 ? 6 : 2;
+  const selections = noise(seed) > .87 ? 4 : noise(seed) > .60 ? 2 : 0;
   for (let index = 0; index < selections; index += 1) {
     const point = project(at(x + noise(seed + index + 1), y + noise(seed - index - 5)));
-    const color = [0x767453, 0x626947, 0x4d5739, 0x91815a][index % 4]!;
-    ground.fillStyle(color, .8).fillRect(Math.floor(point.x), Math.floor(point.y), 2 + index % 2, 1);
+    const color = [0x6c714e, 0x656d49, 0x4b5536, 0x817650][index % 4]!;
+    ground.fillStyle(color, .76).fillRect(Math.floor(point.x), Math.floor(point.y), 3 + index % 2, 1);
     if (index % 2 === 0) ground.fillRect(Math.floor(point.x + 1), Math.floor(point.y - 2), 1, 2);
   }
 }

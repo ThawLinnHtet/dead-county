@@ -58,7 +58,7 @@ export const openings = [mapObject('house_a_door', 'door', 13.90, 7.42, .14, 1.7
   mapObject('house_c_door', 'door', 40.2, 15.96, 1.7, .14),
   mapObject('house_c_side_door', 'door', 45.16, 13.59, .14, 1.68),
   ...districtBuildings.flatMap((lot) => lot.openings)];
-export const initiallyClosed = openings.filter((opening) => opening.type === 'window').map(({ name }) => name);
+export const initiallyClosed = openings.map(({ name }) => name);
 const blockers = [...walls, ...furniture, ...outdoorProps];
 const bucketSize = 5;
 const bucketColumns = Math.ceil((mapWidth + bucketSize) / bucketSize);

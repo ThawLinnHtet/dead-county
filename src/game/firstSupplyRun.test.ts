@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGameCoordinator } from './gameCoordinator.ts';
 import type { GameCoordinator } from './gameCoordinator.ts';
-import { hasLineOfSight, project } from './world.ts';
+import { hasLineOfSight, initiallyClosed, project } from './world.ts';
 import type { WorldPoint } from './world.ts';
 import { zombieConfig } from './zombie.ts';
 
@@ -56,7 +56,12 @@ test('both fresh survivors can walk to the kitchen, transfer its guaranteed can 
       game.resume();
     }
 
-    for (const point of [{ x: 10.7, y: 8.3 }, porchA, ...route, kitchen]) walkTo(game, point);
+    for (const point of [{ x: 10.7, y: 8.3 }, { x: 12.8, y: 8.3 }, porchA, ...route]) {
+      walkTo(game, point);
+      const door = game.getInteractionTarget();
+      if (door?.kind === 'opening' && door.closed) assert.equal(game.interact(door).status, 'opening_changed');
+    }
+    walkTo(game, kitchen);
     assert.equal(game.getState().occupiedHouseId, 'house_b');
     assert.equal(game.getSearchTarget()?.name, cabinet);
     assert.equal(game.search(cabinet), true);
@@ -142,6 +147,7 @@ test('a pursuer can follow the survivor through House B’s entrance onto the ki
   const game = createGameCoordinator({
     position: kitchen,
     zombieSpawns: [{ id: 'supply_pursuer', position, destination: position }],
+    closedOpeningIds: initiallyClosed.filter((id) => id !== 'house_b_door'),
   });
   for (let step = 0; step < 35; step += 1) {
     const [zombie] = game.step(50).zombies;

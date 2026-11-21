@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGameCoordinator } from './gameCoordinator.ts';
-import { canOccupy, contains, houses } from './world.ts';
+import { canOccupy, contains, houses, initiallyClosed } from './world.ts';
+
+const openHouseA = initiallyClosed.filter((id) => id !== 'house_a_door');
 
 test('the authored street zombie wanders through House A’s open doorway without a sighting', () => {
-  const game = createGameCoordinator({ position: { x: 27, y: 21 } });
+  const game = createGameCoordinator({ position: { x: 27, y: 21 }, closedOpeningIds: openHouseA });
   const house = houses[0]!;
   const [start] = game.getState().zombies;
 
@@ -22,6 +24,7 @@ test('the authored street zombie wanders through House A’s open doorway withou
 test('a zombie that sees the survivor beyond the open doorway chases through it', () => {
   const game = createGameCoordinator({
     position: { x: 10.7, y: 8.2 },
+    closedOpeningIds: openHouseA,
     zombieSpawns: [{ id: 'porch_zombie', position: { x: 16.2, y: 8.2 }, destination: { x: 19, y: 8.2 } }],
   });
   for (let tick = 0; tick < 22; tick += 1) {
@@ -51,6 +54,7 @@ test('a clear sight line outside detection range does not start chase', () => {
 function loseSightBehindHouseAWall() {
   const game = createGameCoordinator({
     position: { x: 13.3, y: 8.89 },
+    closedOpeningIds: openHouseA,
     zombieSpawns: [{ id: 'porch_zombie', position: { x: 16.3, y: 8.5 }, destination: { x: 19, y: 8.5 } }],
   });
   let state = game.step(20);

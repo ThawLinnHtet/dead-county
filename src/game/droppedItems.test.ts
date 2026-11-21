@@ -62,6 +62,11 @@ test('a drop beside a wall finds the nearest free space on the reachable side', 
 
   // Walk around the wall through the open doorway and approach from outdoors.
   for (const [direction, distance] of [[{ x: 0, y: -1 }, 1.4], [{ x: 1, y: 0 }, .9], [{ x: 0, y: 1 }, 1.4]] as const) {
+    if (direction.x === 1) {
+      const door = game.getInteractionTarget();
+      assert.ok(door?.kind === 'opening' && door.closed);
+      assert.equal(game.interact(door).status, 'opening_changed');
+    }
     game.setMovement(project(direction));
     game.step(distance / 2.55 * 1000);
   }

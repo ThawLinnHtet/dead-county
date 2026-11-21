@@ -1,5 +1,5 @@
 import { at, box, floor, inset, nearDepth, stroke } from './isometricDrawing';
-import { furniture, project } from './world';
+import { contains, furniture, houses, project } from './world';
 import type { MapObject, WorldRect } from './world';
 
 type Art = Phaser.GameObjects.Graphics;
@@ -8,7 +8,9 @@ const timber = [0x624935, 0x45382c, 0x584331] as const;
 
 export function drawFurniture(scene: Phaser.Scene) {
   const shadows = scene.add.graphics().setDepth(-4900);
-  for (const object of furniture) {
+  return furniture.map((object) => {
+    const center = { x: object.x + object.width / 2, y: object.y + object.height / 2 };
+    const houseId = houses.find((house) => contains(house, center))?.name;
     floor(shadows, { ...object, x: object.x + .04, y: object.y + .075 }, 0x30261e, 0, .36);
     const art = scene.add.graphics().setDepth(nearDepth(object));
     if (object.type === 'cabinet') cabinet(art, object);
@@ -17,7 +19,8 @@ export function drawFurniture(scene: Phaser.Scene) {
     if (object.type === 'bed') bed(art, object);
     if (object.type === 'counter') counter(art, object);
     if (object.type === 'fridge') fridge(art, object);
-  }
+    return { art, houseId };
+  });
 }
 
 function cabinet(art: Art, rect: MapObject) {

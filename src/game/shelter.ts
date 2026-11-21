@@ -64,5 +64,5 @@ export function advanceDoorPressure(
       updated[door.name] = { pressureMs: pressure, wedged };
     }
   }
-  return { defenses: updated ?? defenses, closed: forced.size ? closed.filter((door) => !forced.has(door)) : closed };
+  return { defenses: updated ?? defenses, closed: forced.size ? closed.filter((door) => !forced.has(door)) : closed, breached: forced };
 }

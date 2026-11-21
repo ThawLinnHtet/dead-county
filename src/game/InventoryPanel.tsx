@@ -1,15 +1,16 @@
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { DragEvent, KeyboardEvent } from 'react';
-import type { GameCoordinator } from './gameCoordinator';
+import type { GameCoordinator, StorageLocation } from './gameCoordinator';
 import { ItemIcon } from './ItemIcon';
-import { carriedLoad, itemDefinitions } from './items';
+import { backpackSlots, carriedLoad, itemDefinitions, itemWeight } from './items';
 import type { ItemInstance } from './items';
 import { roundSurvivalStat, survivalStatNames } from './survival';
 import './inventoryPanel.css';
 
-type Selection = { source: 'loot' | 'inventory'; id: string };
+type Selection = { source: 'loot' | 'inventory' | 'pack'; id: string };
 type InventorySource = { source: 'inventory'; id: string; slot: number };
-type DragSource = InventorySource | { source: 'loot'; id: string; containerId: string };
+type DragSource = InventorySource | { source: 'loot' | 'pack'; id: string; storageId: string };
+type DropTarget = number | 'ground' | 'loot' | 'pack';
 const noItems: readonly ItemInstance[] = [];
 const itemDragType = 'application/x-dead-county-item';
 const containerNames: Record<string, string> = { cabinet: 'Cabinet', drawer: 'Drawer', supply_box: 'Supply Box' };
@@ -20,7 +21,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
   const grid = useRef<HTMLDivElement>(null);
   const dragSource = useRef<DragSource | null>(null);
   const [dragging, setDragging] = useState<DragSource | null>(null);
-  const [dropTarget, setDropTarget] = useState<number | 'ground' | null>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
   const [moveSource, setMoveSource] = useState<InventorySource | null>(null);
   const [selection, setSelection] = useState<Selection | null>(() =>
     initialItemId ? { source: 'inventory', id: initialItemId } : null);
@@ -32,9 +33,12 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
   const inventory = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.inventory);
   const equippedId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.equippedWeaponId);
   const packId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.equippedPackId);
+  const packs = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().packs);
+  const packed = (packId && packs[packId]) || noItems;
   const swinging = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.attack !== null);
   const slot = selection?.source === 'inventory' ? inventory.findIndex((item) => item?.id === selection.id) : -1;
-  const selected = selection?.source === 'loot' ? items.find((item) => item.id === selection.id) : inventory[slot];
+  const selected = selection?.source === 'inventory' ? inventory[slot]
+    : (selection?.source === 'loot' ? items : packed).find((item) => item.id === selection?.id);
   const definition = selected && itemDefinitions[selected.kind];
   const firstEmpty = inventory.indexOf(null);
   const full = firstEmpty === -1;
@@ -42,7 +46,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
     ? coordinator.getItemUse(slot, selected.id) : null;
   const useReason = itemUse?.status === 'no_benefit' ? itemUse.reason : null;
   const packSelected = selected?.kind === 'backpack';
-  const { weight, capacity, exertion } = carriedLoad(inventory, packId);
+  const { weight, capacity, exertion } = carriedLoad(inventory, packId, packs);
   const shownWeight = Number(weight.toFixed(2));
 
   useLayoutEffect(() => {
@@ -70,18 +74,34 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
     setMessage('');
   }
 
-  function transfer(containerId: string, itemId: string) {
-    const result = coordinator.transferItem(containerId, itemId);
+  function location(source: Selection['source'], id?: string): StorageLocation {
+    if (source === 'inventory') return { kind: 'inventory' };
+    return { kind: source === 'loot' ? 'container' : 'pack', id: id ?? (source === 'loot' ? container?.name : packId) ?? '' };
+  }
+
+  function transfer(from: Selection, to: Selection['source'], sourceId?: string) {
+    const result = coordinator.transferStorage(location(from.source, sourceId), from.id, location(to));
     if (result.status !== 'transferred') {
-      setMessage(result.status === 'inventory_full' ? 'Inventory full'
-        : result.status === 'too_heavy' ? 'Too heavy to carry.' : 'Item unavailable');
+      const feedback = {
+        inventory_full: 'Inventory full', storage_full: to === 'pack' ? 'Backpack full.' : 'Container full.',
+        too_heavy: 'Too heavy to carry.', unequip_first: 'Unequip this item before moving it here.',
+        no_nested_packs: 'A backpack cannot go inside another backpack.', unavailable: 'Item unavailable.',
+      };
+      setMessage(feedback[result.status]);
       return;
     }
-    setMessage('');
-    setReceived({ slot: result.slot, itemId });
-    const next = coordinator.getState().containers[containerId]?.[0];
-    setSelection(next ? { source: 'loot', id: next.id } : null);
-    if (!next || !coordinator.getState().survivor.inventory.includes(null)) close.current?.focus();
+    setMoveSource(null);
+    if (to === 'inventory') setReceived({ slot: result.slot, itemId: from.id });
+    if (from.source === 'loot' && to === 'inventory') {
+      const next = coordinator.getState().containers[container!.name]?.[0];
+      setSelection(next ? { source: 'loot', id: next.id } : null);
+      setMessage('');
+      if (!next || !coordinator.getState().survivor.inventory.includes(null)) close.current?.focus();
+    } else {
+      setSelection({ source: to, id: from.id });
+      setMessage(to === 'loot' ? 'Stored in container.' : to === 'pack' ? 'Packed.' : 'Moved to inventory.');
+      close.current?.focus();
+    }
   }
 
   function startDrag(event: DragEvent, from: DragSource) {
@@ -99,7 +119,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
     setDropTarget(null);
   }
 
-  function allowDrop(event: DragEvent, target: number | 'ground' | null) {
+  function allowDrop(event: DragEvent, target: DropTarget | null) {
     if (!getDragSource(event)) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = target === null ? 'none' : 'move';
@@ -114,7 +134,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
     const from = getDragSource(event);
     if (!from) return;
     event.stopPropagation();
-    if (from.source === 'loot') allowDrop(event, full ? null : firstEmpty);
+    if (from.source !== 'inventory') allowDrop(event, full ? null : firstEmpty);
     else allowDrop(event, index === undefined || index === from.slot ? null : index);
   }
 
@@ -140,8 +160,28 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
     if (!from) return;
     event.preventDefault();
     endDrag();
-    if (from.source === 'loot') transfer(from.containerId, from.id);
+    if (from.source !== 'inventory') transfer(from, 'inventory', from.storageId);
     else if (to !== undefined) moveItem(from, to);
+  }
+
+  function dropInStorage(event: DragEvent, to: 'loot' | 'pack') {
+    const from = getDragSource(event);
+    if (!from || from.source === to) return;
+    event.preventDefault();
+    endDrag();
+    transfer(from, to, from.source === 'inventory' ? undefined : from.storageId);
+  }
+
+  function storageItems(contents: readonly ItemInstance[], source: 'loot' | 'pack', storageId: string) {
+    return contents.map((item) => (
+      <button key={item.id} className="inventory-slot" type="button" aria-label={itemDefinitions[item.kind].name}
+        aria-pressed={selection?.source === source && selection.id === item.id} draggable
+        data-dragging={dragging?.source === source && dragging.id === item.id}
+        onDragStart={(event) => startDrag(event, { source, id: item.id, storageId })}
+        onClick={() => select(source, item.id)}>
+        <ItemIcon kind={item.kind} />
+      </button>
+    ));
   }
 
   function pickSlot(index: number, item: ItemInstance | null) {
@@ -187,6 +227,8 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
       setMessage('Finish your swing first.');
     } else if (result.status === 'too_heavy') {
       setMessage('Lighten your inventory before removing the backpack.');
+    } else if (result.status === 'pack_too_heavy') {
+      setMessage('Unpack some items before dropping this backpack.');
     } else {
       setMessage('Item unavailable');
     }
@@ -235,26 +277,13 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
           <button ref={close} className="inventory-close" type="button" aria-label="Close" onClick={coordinator.closeInventoryPanel}>×</button>
         </header>
         {container && (
-            <section className="inventory-panel loot-source" aria-label="Container contents">
+            <section className="inventory-panel loot-source inventory-drop-area" aria-label="Container contents"
+              data-drop-target={dropTarget === 'loot'} onDragLeave={leaveDropArea}
+              onDragOver={(event) => { if (getDragSource(event)?.source !== 'loot') allowDrop(event, 'loot'); }}
+              onDrop={(event) => dropInStorage(event, 'loot')}>
               <h3>{title}</h3>
-              {items.length === 0 ? <p className="inventory-muted">Nothing left to search</p> : (
-                <div className="inventory-slots loot-slots">
-                  {items.map((item) => (
-                    <button
-                      key={item.id}
-                      className="inventory-slot"
-                      type="button"
-                      aria-label={itemDefinitions[item.kind].name}
-                      aria-pressed={selection?.source === 'loot' && selection.id === item.id}
-                      draggable
-                      data-dragging={dragging?.source === 'loot' && dragging.id === item.id}
-                      onDragStart={(event) => startDrag(event, { source: 'loot', id: item.id, containerId: container.name })}
-                      onClick={() => select('loot', item.id)}
-                    >
-                      <ItemIcon kind={item.kind} />
-                    </button>
-                  ))}
-                </div>
+              {items.length === 0 ? <p className="inventory-muted">Empty · Drop items here</p> : (
+                <div className="inventory-slots loot-slots">{storageItems(items, 'loot', container.name)}</div>
               )}
               {items.length > 0 && (
                 <div className="loot-transfer">
@@ -262,7 +291,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
                     className="inventory-action inventory-action--primary"
                     type="button"
                     disabled={selection?.source !== 'loot' || !selected || full}
-                    onClick={() => { if (selection?.source === 'loot') transfer(container.name, selection.id); }}
+                    onClick={() => { if (selection?.source === 'loot') transfer(selection, 'inventory'); }}
                   >
                     Transfer
                   </button>
@@ -297,7 +326,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
                 data-equipped={!!item && (item.id === equippedId || item.id === packId)}
                 data-dragging={dragging?.source === 'inventory' && dragging.slot === index}
                 data-drop-target={dropTarget === index}
-                data-loot-receiver={dragging?.source === 'loot' && firstEmpty === index}
+                data-loot-receiver={!!dragging && dragging.source !== 'inventory' && firstEmpty === index}
                 data-move-target={moveSource !== null && moveSource.slot !== index}
                 onDragStart={(event) => { if (item) startDrag(event, { source: 'inventory', id: item.id, slot: index }); }}
                 onDragOver={(event) => highlightInventoryTarget(event, index)}
@@ -316,18 +345,44 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
             ))}
           </div>
           <p className="inventory-hint" role="status">
-            {moveSource ? 'Choose a destination slot.' : dragging?.source === 'loot' && !full
+            {moveSource ? 'Choose a destination slot.' : dragging && dragging.source !== 'inventory' && !full
               ? `Next open slot: ${firstEmpty + 1}` : 'Drag to rearrange.'}
           </p>
+          {packId && (
+            <section className="pack-storage inventory-drop-area" aria-label="Backpack contents"
+              data-drop-target={dropTarget === 'pack'} onDragLeave={leaveDropArea}
+              onDragOver={(event) => { if (getDragSource(event)?.source !== 'pack') allowDrop(event, 'pack'); }}
+              onDrop={(event) => dropInStorage(event, 'pack')}>
+              <h3>Backpack <span>{packed.length} / {backpackSlots}</span></h3>
+              <div className="inventory-slots pack-slots">
+                {storageItems(packed, 'pack', packId)}
+                {Array.from({ length: backpackSlots - packed.length }, (_, index) =>
+                  <span key={index} className="inventory-slot" aria-hidden="true" />)}
+              </div>
+            </section>
+          )}
         </section>
         <section className="inventory-panel item-details" aria-label="Item details">
           {selected && definition ? (
             <>
               <div className="item-detail-heading">
                 <ItemIcon kind={selected.kind} />
-                <div><h3>{definition.name}</h3><p>{definition.category} · {definition.weight} kg</p></div>
+                <div><h3>{definition.name}</h3><p>{definition.category} · {Number(itemWeight(selected, packs).toFixed(2))} kg</p></div>
               </div>
               <p>{definition.description}</p>
+              {selection && (
+                <div className="inventory-actions storage-actions">
+                  {packId && selection.source !== 'pack' && selected.kind !== 'backpack' && (
+                    <button className="inventory-action" type="button" onClick={() => transfer(selection, 'pack')}>Pack</button>
+                  )}
+                  {container && selection.source !== 'loot' && (
+                    <button className="inventory-action" type="button" onClick={() => transfer(selection, 'loot')}>Store</button>
+                  )}
+                  {selection.source === 'pack' && (
+                    <button className="inventory-action" type="button" onClick={() => transfer(selection, 'inventory')}>Unpack</button>
+                  )}
+                </div>
+              )}
               {selection?.source === 'inventory' && (
                 <>
                   <div className="inventory-actions">
@@ -348,7 +403,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
                       >
                         {selected.id === equippedId || selected.id === packId ? 'Unequip' : 'Equip'}
                       </button>
-                    ) : (
+                    ) : itemUse?.status !== 'unavailable' && (
                       <button
                         className="inventory-action inventory-action--primary"
                         type="button"
@@ -401,7 +456,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
               {!message && <p className="inventory-muted">Select an item to view its details.</p>}
             </>
           )}
-          <p className="inventory-item-feedback" role="status">{selection?.source !== 'loot' ? message : ''}</p>
+          <p className="inventory-item-feedback" role="status">{selection?.source !== 'loot' || message === 'Stored in container.' ? message : ''}</p>
         </section>
       </div>
     </dialog>

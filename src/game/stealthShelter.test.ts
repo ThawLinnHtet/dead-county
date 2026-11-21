@@ -11,13 +11,16 @@ const doorway = 'house_a_door';
 
 function closeDoor(game: GameCoordinator) {
   const door = game.getInteractionTarget();
-  assert.ok(door?.kind === 'opening' && door.id === doorway);
+  assert.ok(door?.kind === 'opening' && door.id === doorway && !door.closed);
   assert.deepEqual(game.interact(door), { status: 'opening_changed' });
 }
 
 test('a closed door hides the zombie while its muffled sounds still reach the survivor', () => {
   const outside = { x: 15.8, y: 8.28 };
   const game = createGameCoordinator({ position: inside, zombieSpawns: [] });
+  const door = game.getInteractionTarget();
+  assert.ok(door?.kind === 'opening' && door.closed);
+  assert.equal(game.interact(door).status, 'opening_changed');
   assert.equal(game.canSee(outside), true);
   const audible = game.listenAt(outside, 8);
   assert.ok(audible && !audible.muffled);
@@ -112,6 +115,9 @@ test('a pursuer approaches and forces an ordinary door, while one wedge buys ext
   const outside = { x: 16.15, y: 8.28 };
   function chase(wedged: boolean) {
     const initial = createGameCoordinator({ position: inside, zombieSpawns: [{ id: 'pursuer', position: outside, destination: outside }] });
+    const door = initial.getInteractionTarget();
+    assert.ok(door?.kind === 'opening' && door.closed);
+    assert.equal(initial.interact(door).status, 'opening_changed');
     assert.equal(initial.step(25).zombies[0]?.behavior.kind, 'chase');
     closeDoor(initial);
     const closed = initial.getState();
@@ -145,7 +151,6 @@ test('a pursuer approaches and forces an ordinary door, while one wedge buys ext
 
 test('a weakened door reports its strain and reinforcement changes the warning threshold', () => {
   const game = createGameCoordinator({ position: inside, zombieSpawns: [] });
-  closeDoor(game);
   const closed = game.getState();
   const worn = restoreGameCoordinator({ ...closed, doorDefenses: { [doorway]: { pressureMs: 1130, wedged: false } } });
   const wedged = restoreGameCoordinator({ ...closed, doorDefenses: { [doorway]: { pressureMs: 1130, wedged: true } } });

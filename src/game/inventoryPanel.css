@@ -70,6 +70,35 @@
   overflow: auto;
 }
 
+.inventory-drop-area[data-drop-target="true"] {
+  outline: 1px dashed var(--dc-focus);
+  outline-offset: -5px;
+  background: var(--dc-surface-elevated);
+}
+
+.pack-storage {
+  margin-top: .8rem;
+  padding: .65rem;
+  border: 1px solid var(--dc-border);
+  background: var(--dc-surface);
+}
+
+.pack-storage h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pack-storage h3 span {
+  color: var(--dc-text-muted);
+  font: .75rem var(--dc-font-body);
+}
+
+.pack-slots { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.pack-slots .inventory-slot { min-height: 36px; }
+.pack-slots .item-icon { max-width: 100%; }
+.storage-actions:not(:empty) { margin-bottom: .6rem; }
+
 .inventory-slot {
   position: relative;
   display: grid;
