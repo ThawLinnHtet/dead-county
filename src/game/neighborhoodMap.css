@@ -235,8 +235,8 @@
   border-radius: 2px;
   background: #252421;
   color: var(--map-paper);
-  font: 600 .8rem/1.15 Inter, Arial, sans-serif;
-  translate: -50% calc(-100% - .4rem);
+  font: 600 .72rem/1.15 Inter, Arial, sans-serif;
+  translate: -50% -50%;
   white-space: nowrap;
 }
 

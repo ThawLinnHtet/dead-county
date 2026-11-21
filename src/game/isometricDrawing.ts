@@ -68,6 +68,19 @@ export function nearDepth(rect: WorldRect): number {
   return project({ x: rect.x + rect.width, y: rect.y + rect.height }).y;
 }
 
+export function artBounds(rect: WorldRect, rise: number) {
+  return {
+    left: project({ x: rect.x, y: rect.y + rect.height }).x - 12,
+    right: project({ x: rect.x + rect.width, y: rect.y }).x + 12,
+    top: project(rect).y - rise - 12,
+    bottom: nearDepth(rect) + 12,
+  };
+}
+
+export function isArtInView(view: Phaser.Geom.Rectangle, bounds: ReturnType<typeof artBounds>) {
+  return bounds.right >= view.left && bounds.left <= view.right && bounds.bottom >= view.top && bounds.top <= view.bottom;
+}
+
 export function noise(seed: number): number {
   const doubled = Math.imul(seed ^ 0x1d872b41, 0x85ebca6b);
   return ((doubled ^ doubled >>> 11) >>> 0) / 4294967296;

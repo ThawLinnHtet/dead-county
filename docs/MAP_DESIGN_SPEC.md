@@ -8,6 +8,8 @@
 
 ## 1. Approval and requirements hierarchy
 
+The [master PRD expansion rules](PRD.md#5-functional-requirements--world-and-buildings-p0) govern the enlarged neighborhood. The three-house layout below describes the original starter block and its route acceptance cases.
+
 The user approved a **grounded, abandoned suburban neighborhood** with faded asphalt, sidewalks, fenced yards, subdued trees, weathered houses, occasional stationary vehicles, sparse clutter and restrained blood. The map includes **exactly three enterable houses** and a **circular minimap + full-map overlay**.
 
 **Approved:** visual direction, three-house structure, daytime presentation, neighborhood-scale exploration, circular minimap and full map. **Not yet locked:** map dimensions, tile count, exact road junction coordinates, collision shape details, floor plan layouts, and final source-pixel scale. Finalize those through a small Phaser + Tiled spike before full map production.

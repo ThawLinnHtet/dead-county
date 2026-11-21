@@ -2,6 +2,29 @@ export const survivalStatNames = { health: 'Health', stamina: 'Stamina', hunger:
 export type SurvivalStat = keyof typeof survivalStatNames;
 export type Need = 'hunger' | 'thirst';
 type Needs = Readonly<Record<Need, number>>;
+export const survivalPacing = 8;
+export const dayLengthMs = 12 * 60_000;
+export const bleedingDamagePerMs = .00018;
+
+function neighborhoodMinute(activeTimeMs: number) {
+  return 8 * 60 + Math.floor(activeTimeMs * 1440 / dayLengthMs);
+}
+
+export function neighborhoodDarkness(activeTimeMs: number) {
+  const hour = (neighborhoodMinute(activeTimeMs) % 1440) / 60;
+  return Math.min(1, Math.max(0, 1 - Math.min((hour - 5) / 3, (21 - hour) / 3, 1)));
+}
+
+export function neighborhoodTime(activeTimeMs: number) {
+  const minute = neighborhoodMinute(activeTimeMs);
+  const minuteOfDay = minute % 1440;
+  const hour = minuteOfDay / 60;
+  return {
+    day: Math.floor(minute / 1440) + 1,
+    time: `${String(Math.floor(hour)).padStart(2, '0')}:${String(minuteOfDay % 60).padStart(2, '0')}`,
+    darkness: neighborhoodDarkness(activeTimeMs),
+  };
+}
 
 export function roundSurvivalStat(value: number) {
   if (value <= 0) return 0;
@@ -11,8 +34,8 @@ export function roundSurvivalStat(value: number) {
 }
 
 const needs = {
-  hunger: { progressionPerMs: .0016, warning: 40, critical: 80, damagePerMs: .0028 },
-  thirst: { progressionPerMs: .002, warning: 44, critical: 80, damagePerMs: .00325 },
+  hunger: { progressionPerMs: .0016 / survivalPacing, warning: 40, critical: 80, damagePerMs: .0028 / survivalPacing },
+  thirst: { progressionPerMs: .002 / survivalPacing, warning: 44, critical: 80, damagePerMs: .00325 / survivalPacing },
 };
 
 export function getNeedWarning(need: Need, severity: number) {
@@ -31,13 +54,13 @@ function advanceNeed(need: Need, severity: number, elapsedMs: number, criticalIn
   return elapsedMs === criticalInMs ? critical : Math.min(100, severity + progressionPerMs * elapsedMs);
 }
 
-export function getSurvivalStep(survivor: Needs & { readonly health: number }, maximumMs: number) {
+export function getSurvivalStep(survivor: Needs & { readonly health: number; readonly bleeding?: boolean }, maximumMs: number) {
   const hungerCriticalInMs = timeUntilCritical('hunger', survivor.hunger);
   const thirstCriticalInMs = timeUntilCritical('thirst', survivor.thirst);
   const damagePerMs = Math.max(
     hungerCriticalInMs === 0 ? needs.hunger.damagePerMs : 0,
     thirstCriticalInMs === 0 ? needs.thirst.damagePerMs : 0,
-  );
+  ) + (survivor.bleeding ? bleedingDamagePerMs : 0);
 
   // End the step when damage changes rate or kills the survivor, just as combat
   // steps end at attack phase boundaries. Each interval has one damage rate.

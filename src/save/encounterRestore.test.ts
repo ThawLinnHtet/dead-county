@@ -6,6 +6,7 @@ import { canOccupy, contains, houses } from '../game/world.ts';
 import type { WorldPoint } from '../game/world.ts';
 import type { ZombieState } from '../game/zombie.ts';
 import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
+import { bleedingDamagePerMs } from '../game/survival.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
 const farAway = { x: 4, y: 2 };
@@ -69,7 +70,8 @@ test('Continue matches Pause and Resume for committed attacks before and after c
     assert.equal(frozen.zombies[0]!.attack?.damageApplied, elapsed === 460);
     const after = matchedStep(original, continued, 20);
     assert.deepEqual(after.survivor.position, frozen.survivor.position);
-    assert.equal(after.survivor.health, frozen.survivor.health);
+    const expected = frozen.survivor.health - (frozen.survivor.bleeding ? 20 * bleedingDamagePerMs : 0);
+    assert.ok(Math.abs(after.survivor.health - expected) < 1e-8);
     assert.equal(after.zombies[0]!.health, frozen.zombies[0]!.health);
     for (let tick = 0; tick < 40; tick += 1) matchedStep(original, continued, 20);
   }

@@ -1,30 +1,27 @@
 import { at, box, floor, inset, nearDepth, noise, screenShape, stroke } from './isometricDrawing';
-import { details, groundTiles, mapHeight, mapWidth, outdoorProps, project } from './world';
+import { details, mapWidth, outdoorProps, project } from './world';
 import type { MapObject } from './world';
 
 type Art = Phaser.GameObjects.Graphics;
 
+export function drawTerrainDetail(ground: Art, x: number, y: number, tile: number) {
+  const seed = x * 123 + y * 793;
+  if (tile === 3 && noise(seed) > .65) {
+    const p = at(x + .1 + noise(seed + 8) * .55, y + .23 + noise(seed + 16) * .4);
+    stroke(ground, 0x272a27, [p, at(p.x + .18, p.y + .12), at(p.x + .2, p.y + .29), at(p.x + .34, p.y + .31)], 1, .5);
+  }
+  if (tile > 2) return;
+  const selections = noise(seed) > .72 ? 6 : 2;
+  for (let index = 0; index < selections; index += 1) {
+    const point = project(at(x + noise(seed + index + 1), y + noise(seed - index - 5)));
+    const color = [0x767453, 0x626947, 0x4d5739, 0x91815a][index % 4]!;
+    ground.fillStyle(color, .8).fillRect(Math.floor(point.x), Math.floor(point.y), 2 + index % 2, 1);
+    if (index % 2 === 0) ground.fillRect(Math.floor(point.x + 1), Math.floor(point.y - 2), 1, 2);
+  }
+}
+
 export function drawScenery(scene: Phaser.Scene) {
   const ground = scene.add.graphics().setDepth(-5100);
-  for (let y = 0; y < mapHeight; y += 1) {
-    for (let x = 0; x < mapWidth; x += 1) {
-      const seed = x * 123 + y * 793;
-      const tile = groundTiles[y * mapWidth + x];
-      if (tile === 3 && noise(seed) > .65) {
-        const p = at(x + .1 + noise(seed + 8) * .55, y + .23 + noise(seed + 16) * .4);
-        stroke(ground, 0x272a27, [p, at(p.x + .18, p.y + .12), at(p.x + .2, p.y + .29), at(p.x + .34, p.y + .31)], 1, .5);
-      }
-      if (tile > 2) continue;
-      const selections = noise(seed) > .72 ? 6 : 2;
-      for (let index = 0; index < selections; index += 1) {
-        const point = project(at(x + noise(seed + index + 1), y + noise(seed - index - 5)));
-        const color = [0x767453, 0x626947, 0x4d5739, 0x91815a][index % 4]!;
-        ground.fillStyle(color, .8).fillRect(Math.floor(point.x), Math.floor(point.y), 2 + index % 2, 1);
-        if (index % 2 === 0) ground.fillRect(Math.floor(point.x + 1), Math.floor(point.y - 2), 1, 2);
-      }
-    }
-  }
-
   for (let y = 1.2; y < 17; y += 1.55) {
     floor(ground, { x: 20.42, y, width: .083, height: .6 }, 0xb29455, 0, .68);
   }

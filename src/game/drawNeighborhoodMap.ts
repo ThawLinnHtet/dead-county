@@ -1,10 +1,14 @@
 import { details, groundTiles, mapHeight, mapWidth, outdoorProps, roofs } from './world';
+import { districtBuildings } from './district';
 
 export const houseNames: Readonly<Record<string, string>> = {
   house_a: 'House A',
   house_b: 'House B',
   house_c: 'House C',
+  ...Object.fromEntries(districtBuildings.map(({ id, name }) => [id, name])),
 };
+
+export const labeledBuildings = new Set(['house_a', 'house_b', 'house_c', ...districtBuildings.filter(({ featured }) => featured).map(({ id }) => id)]);
 
 // Ground tile IDs from the Tiled neighborhood tileset, including the two lawn variants.
 const groundColors = ['#333826', '#50553a', '#555a3d', '#65625c', '#8d826b', '#665b45', '#665b45'];
@@ -14,7 +18,7 @@ const roofColors: Readonly<Record<string, string>> = {
   house_c: '#876357',
 };
 const entrances = new Set(['porch', 'covered_porch', 'risk_stoop', 'concrete_landing']);
-const mapPixelsPerTile = 24;
+const mapPixelsPerTile = 16;
 let chartImage: string | undefined;
 
 export function getNeighborhoodMapImage(): string {

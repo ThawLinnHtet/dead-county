@@ -1,0 +1,73 @@
+name: CI and Vercel
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    concurrency:
+      group: ci-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          name: dead-county-dist
+          path: dist/
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    name: Deploy production on Vercel
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: vercel-production
+      cancel-in-progress: false
+    environment:
+      name: production
+      url: https://dead-county-eight.vercel.app/
+    steps:
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: dead-county-dist
+          path: ${{ runner.temp }}/dead-county
+      - name: Install Vercel CLI
+        run: npm install --prefix "$RUNNER_TEMP/vercel-cli" --no-audit --no-fund vercel@65.2.0
+      - name: Deploy the tested site
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+        shell: bash
+        run: |
+          if [[ -z "$VERCEL_TOKEN" ]]; then
+            echo '::error::Configure the VERCEL_TOKEN secret for production deployment.'
+            exit 1
+          fi
+          options=()
+          if [[ -n "$VERCEL_SCOPE" ]]; then options+=(--scope "$VERCEL_SCOPE"); fi
+          "$RUNNER_TEMP/vercel-cli/node_modules/.bin/vercel" deploy "$RUNNER_TEMP/dead-county" \
+            --prod --yes --project dead-county --verify --no-color --token "$VERCEL_TOKEN" "${options[@]}"

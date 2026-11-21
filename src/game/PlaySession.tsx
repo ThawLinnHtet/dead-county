@@ -11,6 +11,12 @@ import { FullMap, Minimap } from './NeighborhoodMap';
 import { PauseMenu } from './PauseMenu';
 import type { PauseSaveActions } from './PauseMenu';
 import { SurvivalMeters } from './SurvivalMeters';
+import { neighborhoodTime } from './survival';
+
+function focusGameplay(root: HTMLElement | null) {
+  const target = root?.querySelector('canvas') ?? root?.querySelector<HTMLElement>('.game-viewport');
+  target?.focus({ preventScroll: true });
+}
 
 export function PlaySession({
   coordinator,
@@ -40,6 +46,13 @@ export function PlaySession({
   );
   const gameOver = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().gameOver);
   const [revealedResult, revealGameOver] = useState<GameOverResult | null>(null);
+  const [inventoryItemId, setInventoryItemId] = useState<string>();
+  const clock = neighborhoodTime(survivalSeconds * 1000);
+
+  function openInventory(itemId?: string) {
+    setInventoryItemId(itemId);
+    coordinator.setForegroundPanel('inventory');
+  }
 
   useLayoutEffect(() => {
     if (gameOver) return;
@@ -59,7 +72,10 @@ export function PlaySession({
         return;
       }
       if (event.code === 'KeyI') {
-        if (!event.repeat) coordinator.toggleInventory();
+        if (!event.repeat) {
+          setInventoryItemId(undefined);
+          coordinator.toggleInventory();
+        }
         return;
       }
       if (event.key !== 'Escape') return;
@@ -71,11 +87,7 @@ export function PlaySession({
   }, [coordinator, gameOver]);
 
   useLayoutEffect(() => {
-    if (!pause.isPaused && !gameOver) {
-      const target = foreground.current?.querySelector('canvas')
-        ?? foreground.current?.querySelector<HTMLElement>('.game-viewport');
-      target?.focus({ preventScroll: true });
-    }
+    if (!pause.isPaused && !gameOver) focusGameplay(foreground.current);
   }, [pause.isPaused, gameOver]);
 
   if (gameOver && revealedResult === gameOver) {
@@ -89,9 +101,10 @@ export function PlaySession({
     <main className="game-screen">
       <div ref={foreground} inert={pause.isPaused || gameOver !== null}>
         <GameViewport coordinator={coordinator} onDeathAnimationEnd={revealGameOver} />
+        <div className="neighborhood-night" style={{ opacity: clock.darkness }} aria-hidden="true" />
         <header className="game-location">
-          <SurvivalMeters coordinator={coordinator} />
           <p className="game-location-label" role="status">{houseNames[occupiedHouseId ?? ''] ?? 'Neighborhood'}</p>
+          <SurvivalMeters coordinator={coordinator} />
         </header>
         <div className="map-hud">
           <div className="survival-clock">
@@ -99,23 +112,25 @@ export function PlaySession({
             <time role="timer" aria-label="Survival time" dateTime={`PT${survivalSeconds}S`}>
               {formatSurvivalTime(survivalSeconds)}
             </time>
+            <span className="neighborhood-day">Day {clock.day} · {clock.time}</span>
           </div>
           <Minimap coordinator={coordinator} />
         </div>
-        <InventoryPreview coordinator={coordinator} />
+        <InventoryPreview coordinator={coordinator} onOpenInventory={openInventory}
+          onReturnToWorld={() => focusGameplay(foreground.current)} />
         <aside className="movement-hint" aria-label="Gameplay controls">
           <span className="movement-keys" aria-hidden="true">
             <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
           </span>
           <span>Move</span>
-          <span className="movement-keys" aria-hidden="true"><kbd>I</kbd></span>
-          <span>Inventory</span>
           {batEquipped && (
             <>
               <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Left Click</kbd></span>
               <span aria-label="Left Click to swing">Swing</span>
             </>
           )}
+          <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Esc</kbd></span>
+          <span aria-label="Escape to pause">Pause</span>
         </aside>
       </div>
       {!gameOver && (
@@ -125,7 +140,8 @@ export function PlaySession({
             <PauseMenu pause={pause} onResume={coordinator.resume} saveActions={pauseSaveActions} />
           )}
           {(pause.foregroundPanel === 'inventory' || (pause.foregroundPanel === 'loot' && coordinator.getOpenContainer())) && (
-            <InventoryPanel coordinator={coordinator} />
+            <InventoryPanel coordinator={coordinator}
+              initialItemId={pause.foregroundPanel === 'inventory' ? inventoryItemId : undefined} />
           )}
         </>
       )}

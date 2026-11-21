@@ -1,5 +1,6 @@
-import { at, box, floor, inset, nearDepth, noise, shape, stroke } from './isometricDrawing';
-import { details, houses, roofs, walls } from './world';
+import { artBounds, at, box, floor, inset, nearDepth, noise, shape, stroke } from './isometricDrawing';
+import { districtBuildings } from './district';
+import { details, houses, openings, project, roofs, walls } from './world';
 import type { MapObject, WorldRect } from './world';
 
 const wallHeight = 68;
@@ -43,6 +44,9 @@ const houseMaterials: Readonly<Record<string, { siding: Siding; roof: RoofPalett
   house_a: { siding: creamSiding, roof: brownRoof },
   house_b: { siding: graySiding, roof: slateRoof },
   house_c: { siding: rustSiding, roof: patchedRoof },
+  ...Object.fromEntries(districtBuildings.map(({ id, palette }) => [id, {
+    siding: [creamSiding, graySiding, rustSiding][palette]!, roof: [brownRoof, slateRoof, patchedRoof][palette]!,
+  }])),
 };
 
 export function drawHouse(scene: Phaser.Scene) {
@@ -63,34 +67,58 @@ export function drawHouse(scene: Phaser.Scene) {
     floor(ground, { x: house.x - .09, y: house.y - .09, width: house.width + .18, height: house.height + .18 }, 0x2b271b, 0, .12);
   }
 
-  const nearWalls: { art: Art; houseId: string; depth: number }[] = [];
+  const nearWalls: { art: Art; houseId: string; bounds: ReturnType<typeof artBounds> }[] = [];
+  const fixedWalls: { art: Art; bounds: ReturnType<typeof artBounds> }[] = [];
   for (const wall of walls) {
     const house = houses.find((candidate) => wall.name.startsWith(candidate.name + '_'));
     const front = house && (wall.x > house.x + house.width - .3 || wall.y > house.y + house.height - .3);
     const depth = nearDepth(wall);
     const siding = (house && houseMaterials[house.name]?.siding) ?? creamSiding;
+    const base = scene.add.graphics().setDepth(depth);
+    const bounds = artBounds(wall, wallHeight);
+    fixedWalls.push({ art: base, bounds });
     if (front) {
-      paintWall(scene.add.graphics().setDepth(depth), wall, cutawayHeight, 0, siding);
+      paintWall(base, wall, cutawayHeight, 0, siding);
       const upper = scene.add.graphics().setDepth(depth + .02);
       paintWall(upper, wall, wallHeight - cutawayHeight, cutawayHeight, siding);
-      nearWalls.push({ art: upper, houseId: house.name, depth });
+      nearWalls.push({ art: upper, houseId: house.name, bounds });
     } else {
-      paintWall(scene.add.graphics().setDepth(depth), wall, wall.type === 'partition' ? 28 : wallHeight, 0, siding);
+      paintWall(base, wall, wall.type === 'partition' ? 28 : wallHeight, 0, siding);
     }
   }
 
   const roofArt = roofs.map((roof) => {
     const art = scene.add.graphics().setDepth(nearDepth(roof) + .4);
     paintRoof(art, roof, houseMaterials[roof.name]?.roof ?? brownRoof);
-    return { art, houseId: roof.name };
+    return { art, houseId: roof.name, bounds: artBounds(roof, 138) };
   });
   for (const detail of details.filter((entry) => entry.type === 'covered_porch')) {
     const art = scene.add.graphics().setDepth(nearDepth(detail) + .45);
     paintPorchCanopy(art, detail);
     const house = houses.find((candidate) => detail.name.startsWith(candidate.name + '_'));
-    if (house) roofArt.push({ art, houseId: house.name });
+    if (house) roofArt.push({ art, houseId: house.name, bounds: artBounds(detail, 84) });
   }
-  return { nearWalls, roofArt };
+  const signs = districtBuildings.filter(({ featured }) => featured).map(({ id, name, house }) => {
+    const point = project({ x: house.x + house.width / 2, y: house.y + house.height });
+    const art = scene.add.text(point.x, point.y - 51, name.toUpperCase(), {
+      fontFamily: 'Inter, sans-serif', fontSize: '10px', color: '#f1e2c8', backgroundColor: '#303128',
+      padding: { x: 4, y: 2 },
+    }).setOrigin(.5).setAngle(26.6).setDepth(point.y + .12);
+    return { art, houseId: id };
+  });
+  const openingArt = openings.map((opening) => {
+    const window = opening.type === 'window';
+    const frame = scene.add.graphics().setDepth(nearDepth(opening) - .01);
+    box(frame, opening, window ? 5 : 2, [0x9e886a, 0x61523e, 0x796348]);
+    const panel = scene.add.graphics().setDepth(nearDepth(opening) + .01);
+    box(panel, opening, window ? 42 : 51, window ? [0x759290, 0x475e5a, 0x54726e] : [0x998166, 0x5d4937, 0x7c654b]);
+    const vertical = opening.height > opening.width;
+    const a = at(opening.x + opening.width, opening.y + opening.height, window ? 23 : 28);
+    const b = at(vertical ? opening.x + opening.width : opening.x, vertical ? opening.y : opening.y + opening.height, window ? 23 : 28);
+    stroke(panel, 0xc8b295, [a, b], 2.5);
+    return { id: opening.name, panel };
+  });
+  return { nearWalls, fixedWalls, roofArt, openingArt, signs };
 }
 
 function rug(art: Art, rect: WorldRect) {

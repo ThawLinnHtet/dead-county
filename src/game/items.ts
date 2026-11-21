@@ -1,5 +1,6 @@
 import { canOccupy, contains, furniture, hasLineOfSight, houses } from './world.ts';
 import type { MapObject, WorldPoint } from './world.ts';
+import { districtBuildings } from './district.ts';
 
 export const itemDefinitions = {
   baseball_bat: { name: 'Baseball Bat', category: 'Melee Weapon', description: 'A sturdy wooden bat. Equip it for melee attacks.' },
@@ -18,12 +19,13 @@ export const itemDefinitions = {
   bandage: {
     name: 'Bandage',
     category: 'Medical',
-    description: 'A clean bandage. Restores lost Health.',
+    description: 'A clean bandage. Stops bleeding and restores lost Health.',
     use: { stat: 'health', change: 40, noBenefit: 'Health is full.' },
   },
 } as const;
 
 export type ItemKind = keyof typeof itemDefinitions;
+export const inventoryQuickSlotCount = 10;
 export type ConsumableStat = (typeof itemDefinitions)[Exclude<ItemKind, 'baseball_bat'>]['use']['stat'];
 export interface ItemInstance {
   readonly id: string;
@@ -38,11 +40,16 @@ export interface DroppedItem {
 export type ContainerStock = Readonly<Record<string, readonly ItemKind[]>>;
 export type ContainerContents = Readonly<Record<string, readonly ItemInstance[]>>;
 
-export const authoredStock: ContainerStock = {
+export const starterStock: ContainerStock = {
   starter_container: ['baseball_bat', 'water_bottle'],
   house_b_kitchen_cabinet: ['canned_food'],
   house_b_living_cabinet: ['water_bottle', 'bandage'],
   house_c_kitchen_cabinet: ['canned_food', 'water_bottle'],
+};
+
+export const authoredStock: ContainerStock = {
+  ...starterStock,
+  ...Object.fromEntries(districtBuildings.map(({ id, stock }) => [`${id}_cabinet`, stock])),
 };
 
 const containerTypes = new Set(['cabinet', 'drawer', 'supply_box']);
@@ -66,7 +73,7 @@ export function seedContainers(stock: ContainerStock): ContainerContents {
 export function reachableContainers(
   position: WorldPoint,
   houseId: string | null,
-  contents: ContainerContents,
+  contents: ContainerContents, sight = hasLineOfSight,
 ): { object: MapObject; distance: number }[] {
   return indoorContainers.flatMap(({ object, houseId: containerHouse }) => {
     if (houseId !== containerHouse || !contents[object.name]?.length) return [];
@@ -80,29 +87,29 @@ export function reachableContainers(
       x: x + (position.x - x) * .005 / distance,
       y: y + (position.y - y) * .005 / distance,
     };
-    return hasLineOfSight(position, edge) ? [{ object, distance }] : [];
+    return sight(position, edge) ? [{ object, distance }] : [];
   });
 }
 
 export function reachableDrops(
   origin: WorldPoint,
-  drops: readonly DroppedItem[],
+  drops: readonly DroppedItem[], sight = hasLineOfSight,
 ): { drop: DroppedItem; distance: number }[] {
   return drops.flatMap((drop) => {
     const distance = Math.hypot(drop.position.x - origin.x, drop.position.y - origin.y);
-    return distance <= interactionReach + 1e-9 && hasLineOfSight(origin, drop.position) ? [{ drop, distance }] : [];
+    return distance <= interactionReach + 1e-9 && sight(origin, drop.position) ? [{ drop, distance }] : [];
   });
 }
 
-export function findDropPosition(origin: WorldPoint, drops: readonly DroppedItem[]): WorldPoint | null {
+export function findDropPosition(origin: WorldPoint, drops: readonly DroppedItem[], occupy = canOccupy, sight = hasLineOfSight): WorldPoint | null {
   const spacing = dropRadius * 2;
   const nearby = drops.filter(({ position }) =>
     Math.hypot(position.x - origin.x, position.y - origin.y) <= interactionReach + spacing);
   function isOpen(position: WorldPoint) {
-    return canOccupy(position, dropRadius)
+    return occupy(position, dropRadius)
       && nearby.every((drop) =>
         Math.hypot(drop.position.x - position.x, drop.position.y - position.y) >= spacing - 1e-9)
-      && hasLineOfSight(origin, position);
+      && sight(origin, position);
   }
   if (isOpen(origin)) return { ...origin };
 

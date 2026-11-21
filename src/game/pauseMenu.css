@@ -136,13 +136,17 @@
   gap: .15rem;
   padding: .55rem .75rem;
   border: 1px solid var(--dc-border);
-  background: rgb(12 15 16 / 85%);
+  border-radius: var(--dc-frame-radius);
+  background: var(--dc-frame);
+  box-shadow: var(--dc-frame-shadow);
   color: var(--dc-text);
-  font-size: .75rem;
+  font: 400 .95rem/1.1 var(--dc-font-display);
+  letter-spacing: .045em;
   text-align: center;
 }
 
 .survival-clock time {
-  font-size: 1rem;
+  font: 600 .87rem/1.4 var(--dc-font-body);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }

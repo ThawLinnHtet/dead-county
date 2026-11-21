@@ -36,7 +36,7 @@ function walkTo(
 }
 
 test('a survivor can walk from House A into House C, transfer its essentials, and sprint back to the street', () => {
-  assert.deepEqual(houses.map(({ name }) => name), ['house_a', 'house_b', 'house_c']);
+  assert.deepEqual(houses.slice(0, 3).map(({ name }) => name), ['house_a', 'house_b', 'house_c']);
   assert.deepEqual(roofs.map(({ name }) => name), houses.map(({ name }) => name));
   const game = createGameCoordinator();
   const food = game.getState().containers[cabinetC]?.find(({ kind }) => kind === 'canned_food');

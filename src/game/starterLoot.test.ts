@@ -56,6 +56,66 @@ test('a full inventory preserves the selected container item and reports capacit
   assert.deepEqual(full.containers[cabinet], [items[12]]);
 });
 
+test('inventory moves swap exact instances without changing equipment or accepting stale commands', () => {
+  const game = createGameCoordinator({ position: { x: 11.9, y: 9.15 } });
+  const prompt = game.getInteractionTarget();
+  assert(prompt?.kind === 'container');
+  assert.deepEqual(game.interact(prompt), { status: 'searched' });
+  const [bat, water] = game.getState().containers[cabinet]!;
+  game.transferItem(cabinet, bat!.id);
+  game.toggleEquip(0, bat!.id);
+  assert.equal(game.moveInventoryItem(0, bat!.id, 11), true);
+  assert.deepEqual(game.transferItem(cabinet, water!.id), { status: 'transferred', slot: 0 });
+  assert.equal(game.moveInventoryItem(11, bat!.id, 0), true);
+  const swapped = game.getState();
+  assert.strictEqual(swapped.survivor.inventory[0], bat);
+  assert.strictEqual(swapped.survivor.inventory[11], water);
+  assert.equal(swapped.survivor.equippedWeaponId, bat!.id);
+  for (const target of [0, 12, -1, .5, NaN]) assert.equal(game.moveInventoryItem(0, bat!.id, target), false);
+  assert.equal(game.moveInventoryItem(11, bat!.id, 1), false);
+  assert.strictEqual(game.getState(), swapped);
+  game.setTabHidden(true);
+  assert.equal(game.moveInventoryItem(0, bat!.id, 1), false);
+  game.closeInventoryPanel();
+  assert.equal(game.moveInventoryItem(0, bat!.id, 1), false);
+});
+
+test('quick slots equip visible bats without swinging and inspect consumables without using them', () => {
+  const game = createGameCoordinator({
+    position: { x: 11.9, y: 9.15 },
+    zombieSpawns: [],
+    containerStock: { [cabinet]: ['baseball_bat', 'water_bottle', 'baseball_bat'] },
+  });
+  const prompt = game.getInteractionTarget();
+  assert(prompt?.kind === 'container');
+  assert.deepEqual(game.interact(prompt), { status: 'searched' });
+  const [bat, water, spareBat] = game.getState().containers[cabinet]!;
+  assert(bat && water && spareBat);
+  for (const item of [bat, water, spareBat]) assert.equal(game.transferItem(cabinet, item.id).status, 'transferred');
+  assert.equal(game.activateQuickSlot(0, bat.id), 'unavailable');
+  game.closeInventoryPanel();
+  assert.equal(game.activateQuickSlot(0, water.id), 'unavailable');
+  const before = game.getState();
+  assert.equal(game.activateQuickSlot(1, water.id), 'inspect');
+  assert.strictEqual(game.getState(), before);
+  assert.equal(game.activateQuickSlot(0, bat.id), 'equipped');
+  assert.equal(game.getState().survivor.attack, null);
+  assert.equal(game.activateQuickSlot(0, bat.id), 'equipped');
+  assert.equal(game.getState().survivor.equippedWeaponId, bat.id);
+  assert.equal(game.startBatSwing({ x: 12.9, y: 9.15 }), true);
+  const swing = game.getState();
+  assert.equal(game.activateQuickSlot(2, spareBat.id), 'unavailable');
+  assert.strictEqual(game.getState(), swing);
+  game.step(800);
+  assert.equal(game.activateQuickSlot(2, spareBat.id), 'equipped');
+  game.toggleInventory();
+  assert.equal(game.moveInventoryItem(2, spareBat.id, 10), true);
+  game.closeInventoryPanel();
+  assert.equal(game.activateQuickSlot(10, spareBat.id), 'unavailable');
+  game.setTabHidden(true);
+  assert.equal(game.activateQuickSlot(0, bat.id), 'unavailable');
+});
+
 test('search rejects an exterior approach and closing Loot preserves a visibility pause', () => {
   const outside = createGameCoordinator({ position: { x: 11.9, y: 11.6 } });
   assert.equal(outside.search(cabinet), false);

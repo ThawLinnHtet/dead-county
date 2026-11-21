@@ -1,7 +1,7 @@
 import { useCallback, useId, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import type { CSSProperties } from 'react';
 import type { GameCoordinator } from './gameCoordinator';
-import { getNeighborhoodMapImage, houseNames } from './drawNeighborhoodMap';
+import { getNeighborhoodMapImage, houseNames, labeledBuildings } from './drawNeighborhoodMap';
 import { mapHeight, mapWidth, roofs } from './world';
 import type { WorldPoint } from './world';
 import './neighborhoodMap.css';
@@ -90,11 +90,11 @@ function FullMapChart({ coordinator }: { coordinator: GameCoordinator }) {
     <div className="full-map__chart" style={fullMapStyle}>
       <img src={getNeighborhoodMapImage()} alt="" draggable={false} />
       <span className="map-north full-map__north" aria-hidden="true">N ↑</span>
-      {roofs.map(({ name, x, y, width }) => (
+      {roofs.filter(({ name }) => labeledBuildings.has(name)).map(({ name, x, y, width, height }) => (
         <span
           key={name}
           className="full-map__house"
-          style={{ left: (x + width / 2) / mapWidth * 100 + '%', top: y / mapHeight * 100 + '%' }}
+          style={{ left: (x + width / 2) / mapWidth * 100 + '%', top: (y + height / 2) / mapHeight * 100 + '%' }}
         >
           {houseNames[name]}
         </span>
@@ -162,7 +162,7 @@ export function FullMap({ coordinator, open }: { coordinator: GameCoordinator; o
           <FullMapChart coordinator={coordinator} />
           <div className="full-map__legend">
             <span><i className="full-map__player-key" aria-hidden="true" /> You</span>
-            <span><i className="full-map__house-key" aria-hidden="true" /> Enterable house</span>
+            <span><i className="full-map__house-key" aria-hidden="true" /> Enterable building</span>
             <span id={locationId} className="sr-only">
               Current area: {houseNames[coordinator.getState().occupiedHouseId ?? ''] ?? 'Neighborhood'}.
             </span>

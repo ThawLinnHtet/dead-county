@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGameCoordinator } from './gameCoordinator.ts';
+import { survivalPacing } from './survival.ts';
 
 test('needs and duration advance from the first active step and freeze under every hold', () => {
   const game = createGameCoordinator({ position: { x: 11.9, y: 9.15 }, zombieSpawns: [] });
@@ -9,7 +10,7 @@ test('needs and duration advance from the first active step and freeze under eve
   assert.ok(first.survivor.hunger > 0);
   assert.ok(first.survivor.thirst > 0);
   assert.equal(first.survivor.health, 100);
-  const before = game.step(47_999);
+  const before = game.step(48_000 * survivalPacing - 1);
   assert.ok(before.survivor.health < 100);
 
   assert.equal(game.search('starter_container'), true);
@@ -37,8 +38,8 @@ test('needs and duration advance from the first active step and freeze under eve
   assert.strictEqual(game.step(90_000), before);
   game.resume();
 
-  const after = game.step(1000);
-  assert.equal(after.activeTimeMs, 49_000);
+  const after = game.step(1000 * survivalPacing);
+  assert.equal(after.activeTimeMs, 49_000 * survivalPacing);
   assert.ok(after.survivor.health < before.survivor.health);
   assert.ok(after.survivor.hunger > before.survivor.hunger);
   assert.ok(after.survivor.thirst > before.survivor.thirst);
@@ -46,20 +47,20 @@ test('needs and duration advance from the first active step and freeze under eve
 
 test('critical needs use the stronger drain, never cue a bite, and end the active run', () => {
   const game = createGameCoordinator({ zombieSpawns: [] });
-  assert.equal(game.step(40_000).survivor.health, 100);
-  const thirstOnly = game.step(8000);
+  assert.equal(game.step(40_000 * survivalPacing).survivor.health, 100);
+  const thirstOnly = game.step(8000 * survivalPacing);
   assert.equal(thirstOnly.survivor.health, 74);
   assert.equal(thirstOnly.survivor.hunger, 76.8);
-  const both = game.step(3000);
+  const both = game.step(3000 * survivalPacing);
   assert.equal(both.survivor.health, 64.25);
   assert.ok(both.survivor.hunger >= 80 && both.survivor.thirst >= 80);
   assert.equal(both.survivor.lastBiteAtMs, null);
   assert.equal(both.gameOver, null);
 
-  const dead = game.step(90_000);
+  const dead = game.step(90_000 * survivalPacing);
   assert.equal(dead.survivor.health, 0);
   assert.equal(dead.survivor.lastBiteAtMs, null);
-  assert.ok(Math.abs(dead.activeTimeMs - 70_769.23) < .01);
+  assert.ok(Math.abs(dead.activeTimeMs / survivalPacing - 70_769.23) < .01);
   assert.equal(dead.gameOver?.survivorId, 'survivor_male');
   assert.equal(dead.gameOver?.finalActiveTimeMs, dead.activeTimeMs);
   assert.strictEqual(game.step(1000), dead);
@@ -93,7 +94,7 @@ test('Use is eligible only for a benefit and commits exactly the requested insta
     assert.strictEqual(game.getState(), fullHealth);
   }
   game.closeInventoryPanel();
-  const critical = game.step(51_000);
+  const critical = game.step(51_000 * survivalPacing);
   assert.equal(critical.survivor.health, 64.25);
   assert.equal(game.useItem(1, water.id).status, 'unavailable');
   game.toggleInventory();
@@ -102,7 +103,7 @@ test('Use is eligible only for a benefit and commits exactly the requested insta
   assert.equal(game.useItem(1, water.id).status, 'unavailable');
   game.closeInventoryPanel();
 
-  const slowerDrain = game.step(1000);
+  const slowerDrain = game.step(1000 * survivalPacing);
   assert.equal(slowerDrain.survivor.health, 61.45);
   assert.equal(slowerDrain.survivor.lastBiteAtMs, null);
   assert.equal(game.search(cabinet), true);
@@ -161,22 +162,22 @@ test('either critical need can be lethal while the other is satisfied', () => {
     }
     game.closeInventoryPanel();
 
-    game.step(39_000);
+    game.step(39_000 * survivalPacing);
     game.toggleInventory();
     assert.equal(game.useItem(0, items[0]!.id).status, 'used');
     game.closeInventoryPanel();
     if (need === 'hunger') {
-      game.step(29_000);
+      game.step(29_000 * survivalPacing);
       game.toggleInventory();
       assert.equal(game.useItem(1, items[1]!.id).status, 'used');
       game.closeInventoryPanel();
     }
 
-    const dead = game.step(90_000);
+    const dead = game.step(90_000 * survivalPacing);
     const expectedDeathMs = need === 'hunger' ? 85_714.29 : 70_769.23;
     assert.equal(dead.survivor.health, 0);
     assert.equal(dead.survivor.lastBiteAtMs, null);
-    assert.ok(Math.abs(dead.activeTimeMs - expectedDeathMs) < .01);
+    assert.ok(Math.abs(dead.activeTimeMs / survivalPacing - expectedDeathMs) < .01);
     assert.ok(dead.survivor[need] >= 80);
     assert.ok(dead.survivor[need === 'hunger' ? 'thirst' : 'hunger'] < 80);
   }
