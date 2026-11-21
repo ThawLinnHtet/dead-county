@@ -39,18 +39,18 @@ export function createCombatAudio() {
       unlock();
       playNoise(.16, 1900, .19);
     },
-    footsteps(pan: number, volume: number, heavy: boolean) {
-      playNoise(.09, heavy ? 380 : 630, volume, pan);
+    footsteps(pan: number, volume: number, heavy: boolean, muffled = false) {
+      playNoise(.09, (heavy ? 380 : 630) * (muffled ? .52 : 1), volume, pan);
     },
-    groan(pan: number, volume: number) {
+    groan(pan: number, volume: number, muffled: boolean) {
       if (!context || context.state !== 'running' || volume < .01) return;
-      playNoise(.48, 450, volume * .5, pan);
+      playNoise(.48, muffled ? 220 : 450, volume * .5, pan);
       const time = context.currentTime;
       const voice = context.createOscillator();
       const gain = context.createGain();
       const stereo = context.createStereoPanner();
       stereo.pan.value = pan;
-      voice.type = 'triangle';
+      voice.type = muffled ? 'sine' : 'triangle';
       voice.frequency.setValueAtTime(105, time);
       voice.frequency.linearRampToValueAtTime(137, time + .18);
       voice.frequency.exponentialRampToValueAtTime(66, time + .48);
@@ -61,8 +61,12 @@ export function createCombatAudio() {
       voice.start(time);
       voice.stop(time + .48);
     },
-    doorHit(pan: number, volume: number) {
+    doorHit(pan: number, volume: number, strained: boolean, forced: boolean) {
       playNoise(.18, 240, volume, pan);
+      if (strained || forced) playNoise(forced ? .21 : .085, 980, volume * (forced ? .8 : .4), pan);
+    },
+    shoveHit(pan: number, volume: number) {
+      playNoise(.11, 390, volume, pan);
     },
     impact() {
       if (!context) return;

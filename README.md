@@ -27,6 +27,8 @@ Follow the avenue east into six connected blocks. The Corner Store, Birch Clinic
 
 Walls and closed doors hide zombies and muffle their sounds. Listen for footsteps and groans from either side, and hold **C** to make a quieter approach. If a zombie saw you enter a building, it can follow your last known position and force the door. The living-room cabinet in House B holds a Canvas Backpack and a Door Wedge. Equip the pack in Inventory to raise your carry limit from 5 kg to 9 kg. Use the wedge from Inventory while standing inside beside a closed door to buy time against pursuit.
 
+Watch for a short arc beside your survivor when a hidden zombie makes a nearby sound. It shows the direction to check. Above 3.5 kg, sprinting costs more Stamina and recovery slows. A pressured door rattles and develops cracks. **Near failure** means it may give way on the next few blows.
+
 ## Controls
 
 | Input | Action |
@@ -35,7 +37,7 @@ Walls and closed doors hide zombies and muffle their sounds. Listen for footstep
 | `Shift` + movement | Sprint while Stamina permits |
 | Hold `C` + movement | Sneak with a lower profile and quieter steps |
 | Mouse movement | Face toward the pointer over the game world |
-| Hold right mouse button | Keep aim on a point while taking slower steps |
+| Hold right mouse button | Stay aimed at the cursor while taking slower side steps and back steps |
 | Left click | Swing the equipped bat in the pointed direction |
 | `Space` | Spend Stamina to shove one nearby zombie in the faced direction |
 | `E` | Search, pick up an item, or open or close an indicated passage |

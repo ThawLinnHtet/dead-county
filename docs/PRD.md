@@ -1,6 +1,6 @@
 # Dead County — Master Product Requirements Document (PRD)
 
-> **Version 2.24 · 2026-11-21**
+> **Version 2.25 · 2026-11-21**
 >
 > **Status:** Approved MVP product scope; final production geometry, UI screen mockups, and asset atlases remain subject to implementation validation  
 > **Product:** Dead County — original 2D isometric zombie-survival game inspired by the genre of *Project Zomboid*  
@@ -39,6 +39,7 @@
 | **v2.22** | **2026-11-19** | Defined feedback for movement, bat hits, zombie bites, need-related health loss and inventory actions. |
 | **v2.23** | **2026-11-21** | Expanded the connected neighborhood. Added interactive entrances, noise investigation, day and night, bleeding treatment, and schema-one migration. |
 | **v2.24** | **2026-11-21** | Added survivor visibility, sneaking, directional audio and animation, ready stance, shove, carry limits, and door reinforcement. |
+| **v2.25** | **2026-11-21** | Tuned directional awareness, ready footwork, exertion from a carried load, and feedback as doors weaken. |
 
 ---
 
@@ -214,6 +215,7 @@ The Corner Store, Birch Clinic, Cedar Workshop and the other authored landmarks 
 - **FR-W20:** The contextual E prompt can open or close an indicated door or operable window. Open passages are traversable. Closed openings block movement and direct sight for both sides. Reject a close request when a living actor or dropped item blocks it.
 - **FR-W21:** Update world lighting and zombie sight reach from the in-game clock. The clock starts at 08:00. One full day takes 12 minutes of active play at the first tuning pass.
 - **FR-W22:** A survivor can use a Door Wedge from inside beside a reachable closed door. The wedge is consumed once and extends the door's resistance to zombies approaching a confirmed last known position. Pursuit still expires in active simulation time. Opening or forcing the door clears its pressure and wedge state.
+- **FR-W23:** Play distinct door impacts as pressure builds. Show progressively visible damage and label a reachable door **Strained** or **Near failure** according to its remaining resistance. Recalculate the warning when a wedge increases that resistance.
 
 ### 5.3 Map dimensions and asset conventions
 
@@ -278,6 +280,7 @@ Both characters can independently start a run, walk, sprint, fight, loot, save, 
 - **FR-Z20:** On a comparable clear route, a pursuing zombie moves slightly faster than a walking survivor, while a survivor sprinting with available stamina moves faster than the zombie. Sprint spends stamina and changes distance. Detection, sight loss, the last known position and pursuit expiry still govern Chase. Tune speeds and sprint drain in the playable map.
 - **FR-Z21:** Footsteps, bat swings and opening interactions emit sound at their world position. Sprinting carries farther than walking. Cover reduces sound reach. A zombie can investigate the last audible point, with its own simulation timer. Confirmed sighting takes priority and existing pursuit continues using its last visible position.
 - **FR-Z22:** Render a zombie only when its position lies in the survivor's field of view and has a clear sight line. Nearby threats around the survivor have a wider viewing angle. Audible footsteps and groans can still be heard through cover, with reduced volume and stereo direction. Holding C lowers speed, footstep noise, and the range at which zombies see the survivor.
+- **FR-Z23:** Forward vision extends farther than side or rear vision. An audible hidden zombie can briefly indicate a general direction beside the survivor. Keep the actor hidden until ordinary sight succeeds. Reduce the volume and higher frequencies of blocked sounds.
 - **FR-Z17:** Each zombie records the survivor’s last known position only when its own perception check confirms range and line of sight. On losing sight, it pursues that fixed world position for the remaining grace period. Hidden survivor movement cannot update the destination. Arrival permits waiting and checking visibility. The first successful reacquisition updates the position and immediately resumes visible Chase.
 - **FR-Z18:** The grace period starts on loss of confirmed visibility and advances only during active simulation. Arrival, repeated failed visibility checks and path retries leave its expiry unchanged. If the position is unreachable, use the existing obstacle-aware navigation failure behavior and continue perception checks from a valid position. On expiry without reacquisition, abandon the pursuit path and start ordinary Wander at the zombie’s current world position. Its spawn and former patrol area have no special priority. Normal perception remains active during Wander.
 
@@ -334,6 +337,7 @@ With 20 active zombies, wandering, detection, chase, attack, death and doorway n
 - **FR-C23:** A hit and a miss use the same bat swing animation and a short swing sound. Confirmed damage adds a distinct impact sound and one brief visual cue on the zombie that took the hit. The impacted zombie must be identifiable at default zoom with audio muted. Use the actual damage event to time the cue.
 - **FR-C24:** A zombie bite has a visually distinct anticipation pose before contact, then a bite motion and a readable recovery. The pose is readable at default zoom. Playtest whether a newcomer recognizes it in time to try stepping clear. Damage timing and reach follow the gameplay rules.
 - **FR-C25:** Holding the right mouse button in the world keeps the survivor facing their aim and slows movement. Pressing Space spends Stamina to commit a short shove. The shove selects one visible, in-range target with the deterministic attack ordering and staggers it without damage. It freezes with other attacks during pauses and survives Continue.
+- **FR-C26:** In the ready stance, side steps are slower than forward steps and back steps are slower than side steps. Shove recovery delays Stamina regeneration. Apply only the portion of a shove's displacement that fits before solid geometry.
 - Unarmed is an allowed equipment **display state**; a full unarmed combat damage system is **not** mandatory. Exactly one weapon item type is supported.
 - No firearm, ammunition, critical hit trees, weapon durability, blocking skill or limb-specific simulation.
 
@@ -379,6 +383,7 @@ With 20 active zombies, wandering, detection, chase, attack, death and doorway n
 - **FR-I16:** In Inventory and Loot, drag an inventory item to an empty slot to move it or onto another item to swap their positions. **Move** and selecting a destination provide a keyboard and click alternative. Reordering keeps each item's identity, equipped state and saved slot. Dragging an inventory item onto **Drop** uses FR-I14. Cancelling or releasing outside a valid target leaves all items in place.
 - **FR-I17:** The HUD mirrors the first ten positions of the same inventory as clickable quick slots. Activating an occupied bat slot during play equips that instance directly when no swing is active. Activating another occupied slot opens Inventory with that item selected. Empty slots have no action.
 - **FR-I18:** Display carried weight and capacity. Pickups and transfers must fit both the weight limit and a vacant slot. A Canvas Backpack raises capacity from 5 kg to 9 kg when equipped. If unequipping or dropping it would leave the survivor over the base limit, the backpack stays equipped and inventory stays intact. Earlier saves may start above the base limit and can free weight normally.
+- **FR-I19:** Show **Heavy load** above 3.5 kg. Additional weight increases sprint Stamina drain and slows recovery while gameplay is active. Calculate exertion from the actual carried weight, even when capacity changes.
 
 **Guaranteed starter and essential supply types:**
 

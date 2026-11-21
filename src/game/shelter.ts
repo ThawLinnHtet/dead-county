@@ -8,6 +8,8 @@ export interface DoorDefense {
 }
 
 export type DoorDefenses = Readonly<Partial<Record<string, DoorDefense>>>;
+export type DoorStrain = 'intact' | 'straining' | 'failing';
+export const doorKnockIntervalMs = 450;
 
 export function openingCenter({ x, y, width, height }: MapObject): WorldPoint {
   return { x: x + width / 2, y: y + height / 2 };
@@ -15,6 +17,12 @@ export function openingCenter({ x, y, width, height }: MapObject): WorldPoint {
 
 export function doorResistance(wedged: boolean) {
   return wedged ? 4200 : 1450;
+}
+
+export function doorStrain(defense: DoorDefense | undefined): DoorStrain {
+  if (!defense) return 'intact';
+  const fraction = defense.pressureMs / doorResistance(defense.wedged);
+  return fraction >= .72 ? 'failing' : fraction >= .3 ? 'straining' : 'intact';
 }
 
 function doorBlocksTarget(door: MapObject, closed: readonly MapObject[], origin: WorldPoint, target: WorldPoint) {

@@ -259,17 +259,20 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
     rebuildNavigation,
     receiveShove(origin: WorldPoint) {
       const direction = aimFrom(origin, state.position) ?? { x: 1, y: 0 };
-      const displaced = {
-        x: state.position.x + direction.x * shoveConfig.knockback,
-        y: state.position.y + direction.y * shoveConfig.knockback,
-      };
+      const stride = shoveConfig.knockback / 6;
+      let position = state.position;
+      for (let step = 0; step < 6; step += 1) {
+        const next = { x: position.x + direction.x * stride, y: position.y + direction.y * stride };
+        if (!canTraverse(position, next)) break;
+        position = next;
+      }
       state = {
         ...state,
         attack: {
           kind: 'stagger', phase: 'recovery', remainingMs: shoveConfig.staggerMs,
           direction: { x: -direction.x, y: -direction.y }, damageApplied: false,
         },
-        position: canTraverse(state.position, displaced) ? displaced : state.position,
+        position,
         moving: false, navigationRetry: null,
       };
       resetPath();

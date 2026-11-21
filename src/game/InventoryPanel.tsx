@@ -42,7 +42,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
     ? coordinator.getItemUse(slot, selected.id) : null;
   const useReason = itemUse?.status === 'no_benefit' ? itemUse.reason : null;
   const packSelected = selected?.kind === 'backpack';
-  const { weight, capacity } = carriedLoad(inventory, packId);
+  const { weight, capacity, exertion } = carriedLoad(inventory, packId);
   const shownWeight = Number(weight.toFixed(2));
 
   useLayoutEffect(() => {
@@ -275,7 +275,10 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
         )}
         <section className="inventory-panel inventory-storage" aria-label="Inventory slots">
           {container && <h3>Inventory</h3>}
-          <p className="inventory-carry" aria-label="Carried weight">{shownWeight} / {capacity} kg</p>
+          <p className="inventory-carry" aria-label="Carried weight">
+            {shownWeight} / {capacity} kg
+            {exertion > 0 && <span title="Sprinting drains Stamina faster and recovery takes longer.">Heavy load</span>}
+          </p>
           <div ref={grid} className="inventory-slots" onDragOver={(event) => highlightInventoryTarget(event)}
             onDragLeave={leaveDropArea} onDrop={(event) => dropInInventory(event)}>
             {inventory.map((item, index) => (

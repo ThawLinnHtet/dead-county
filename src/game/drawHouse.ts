@@ -117,7 +117,7 @@ export function drawHouse(scene: Phaser.Scene) {
     const a = at(opening.x + opening.width, opening.y + opening.height, 23);
     const b = at(vertical ? opening.x + opening.width : opening.x, vertical ? opening.y : opening.y + opening.height, 23);
     stroke(panel, 0xc8b295, [a, b], 2.5);
-    return { id: opening.name, panel, openLeaf: null };
+    return { id: opening.name, panel, openLeaf: null, damage: null };
   });
   return { nearWalls, fixedWalls, roofArt, openingArt, signs };
 }
@@ -146,6 +146,14 @@ function drawDoor(scene: Phaser.Scene, opening: MapObject) {
     : { x: x + jamb, y, width: length - jamb * 2, height };
   const panel = scene.add.graphics().setDepth(depth - .02);
   paintDoorLeaf(panel, leaf, alongY, false);
+  const scuffs = scene.add.graphics().setDepth(depth - .015).setVisible(false);
+  const cracks = scene.add.graphics().setDepth(depth - .014).setVisible(false);
+  const face = (fraction: number, z: number) => doorFace(leaf, alongY, fraction, z);
+  stroke(scuffs, 0x3c2a22, [face(.9, 36), face(.77, 32), face(.79, 25), face(.71, 21)], 2.8);
+  stroke(scuffs, 0xd7a269, [face(.9, 37), face(.77, 33), face(.79, 26), face(.71, 22)], 1.4);
+  stroke(cracks, 0x302016, [face(.78, 31), face(.63, 34), face(.68, 39), face(.53, 46)], 2.7);
+  stroke(cracks, 0x302016, [face(.78, 25), face(.60, 19), face(.62, 16), face(.48, 10)], 2.7);
+  stroke(cracks, 0xe2ad70, [face(.78, 32), face(.63, 35), face(.68, 40), face(.53, 47)], 1.4);
 
   // Swing the same leaf ninety degrees inwards from the hinge jamb.
   const open = alongY
@@ -153,14 +161,18 @@ function drawDoor(scene: Phaser.Scene, opening: MapObject) {
     : { x: leaf.x, y: y + leaf.height - leaf.width, width: leaf.height, height: leaf.width };
   const openLeaf = scene.add.graphics().setDepth(nearDepth(open));
   paintDoorLeaf(openLeaf, open, !alongY, true);
-  return { id: opening.name, panel, openLeaf };
+  return { id: opening.name, panel, openLeaf, damage: { scuffs, cracks } };
+}
+
+function doorFace(leaf: WorldRect, alongY: boolean, fraction: number, z: number) {
+  return alongY
+    ? at(leaf.x + leaf.width, leaf.y + leaf.height * fraction, z)
+    : at(leaf.x + leaf.width * fraction, leaf.y + leaf.height, z);
 }
 
 function paintDoorLeaf(art: Art, leaf: WorldRect, alongY: boolean, hingedAtEnd: boolean) {
   box(art, leaf, doorHeight, [0x9c7557, 0x74513d, 0x856048]);
-  const face = (fraction: number, z: number) => alongY
-    ? at(leaf.x + leaf.width, leaf.y + leaf.height * fraction, z)
-    : at(leaf.x + leaf.width * fraction, leaf.y + leaf.height, z);
+  const face = (fraction: number, z: number) => doorFace(leaf, alongY, fraction, z);
   for (const [bottom, top] of [[7, 24], [32, 48]] as const) {
     shape(art, 0x523b2e, [face(.13, bottom), face(.87, bottom), face(.87, top), face(.13, top)]);
     shape(art, 0x9b7557, [face(.18, bottom + 2), face(.82, bottom + 2), face(.82, top - 2), face(.18, top - 2)]);
