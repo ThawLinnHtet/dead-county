@@ -13,14 +13,16 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
   const host = useRef<HTMLDivElement>(null);
   const interactionPrompt = useRef<HTMLDivElement>(null);
   const interactionLabel = useRef<HTMLSpanElement>(null);
+  const interactionWarning = useRef<HTMLSpanElement>(null);
   const pickupFeedback = useRef<HTMLParagraphElement>(null);
 
   useEffect(() => {
     const parent = host.current;
     const prompt = interactionPrompt.current;
     const label = interactionLabel.current;
+    const warning = interactionWarning.current;
     const feedback = pickupFeedback.current;
-    if (!parent || !prompt || !label || !feedback) return;
+    if (!parent || !prompt || !label || !warning || !feedback) return;
 
     const heldKeys = new Set<string>();
     let displayed: InteractionTarget | null = null;
@@ -30,14 +32,18 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       const changed = target?.id !== displayed?.id || target?.kind !== displayed?.kind
         || (target?.kind === 'opening' && displayed?.kind === 'opening'
           && (target.closed !== displayed.closed || target.wedged !== displayed.wedged));
+      const strain = target?.kind === 'opening' ? target.strain : 'intact';
+      const previousStrain = displayed?.kind === 'opening' ? displayed.strain : 'intact';
       displayed = target;
       if (changed) feedback.textContent = '';
       prompt.hidden = target === null;
       if (!placement || !target) return;
-      if (changed) {
+      if (changed || strain !== previousStrain) {
         label.textContent = target.kind === 'container' ? 'Search' : target.kind === 'opening'
           ? `${target.closed ? 'Open' : 'Close'} ${target.object.type}${target.wedged ? ' (wedged)' : ''}`
           : 'Pick up ' + itemDefinitions[target.item.kind].name;
+        warning.textContent = strain === 'failing' ? 'Near failure' : strain === 'straining' ? 'Strained' : '';
+        warning.dataset.strain = strain;
         promptInset = prompt.offsetWidth / 2 + 4;
       }
       prompt.style.left = `clamp(${promptInset}px, ${placement.x}px, calc(100% - ${promptInset}px))`;
@@ -132,7 +138,10 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
 
   return (
     <div ref={host} className="game-viewport" role="region" aria-label="Dead County game world" tabIndex={-1}>
-      <div ref={interactionPrompt} className="world-interaction-prompt" hidden><kbd>E</kbd> <span ref={interactionLabel} /></div>
+      <div ref={interactionPrompt} className="world-interaction-prompt" hidden>
+        <kbd>E</kbd> <span ref={interactionLabel} />
+        <span ref={interactionWarning} className="world-opening-warning" role="status" />
+      </div>
       <p ref={pickupFeedback} className="world-pickup-feedback" role="status" />
     </div>
   );

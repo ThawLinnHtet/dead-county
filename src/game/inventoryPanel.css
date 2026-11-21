@@ -235,6 +235,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+.inventory-carry span,
+.world-opening-warning {
+  margin-inline-start: .55rem;
+  color: #e3bc83;
+}
+
+.world-opening-warning:empty { display: none; }
+.world-opening-warning[data-strain="failing"] { color: #f2a18b; }
+
 .item-detail-heading {
   display: flex;
   align-items: center;

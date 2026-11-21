@@ -11,8 +11,8 @@ import type { ConsumableStat, ContainerContents, ContainerStock, DroppedItem, It
 import { createZombies, restoreZombies, zombieConfig } from './zombie.ts';
 import type { WorldSound, ZombieSpawn, ZombieState } from './zombie.ts';
 import { getSurvivalStep, neighborhoodDarkness } from './survival.ts';
-import { advanceDoorPressure, findClosedDoorApproach, openingCenter } from './shelter.ts';
-import type { DoorDefenses } from './shelter.ts';
+import { advanceDoorPressure, doorStrain, findClosedDoorApproach, openingCenter } from './shelter.ts';
+import type { DoorDefenses, DoorStrain } from './shelter.ts';
 
 export type SurvivorId = 'survivor_male' | 'survivor_female';
 
@@ -69,7 +69,7 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   isReady(): boolean;
   isSneaking(): boolean;
   canSee(position: WorldPoint): boolean;
-  canHear(position: WorldPoint, reach: number): number;
+  listenAt(position: WorldPoint, reach: number): { volume: number; muffled: boolean } | null;
   aimAt(target: WorldPoint | null): void;
   step(deltaMs: number): GameState;
   startBatSwing(target: WorldPoint): boolean;
@@ -95,7 +95,7 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
 
 export type InteractionTarget =
   | { kind: 'container'; id: string; position: WorldPoint; object: MapObject }
-  | { kind: 'opening'; id: string; position: WorldPoint; object: MapObject; closed: boolean; wedged: boolean }
+  | { kind: 'opening'; id: string; position: WorldPoint; object: MapObject; closed: boolean; wedged: boolean; strain: DoorStrain }
   | { kind: 'drop'; id: string; position: WorldPoint; item: ItemInstance };
 
 type InteractionResult =
@@ -118,7 +118,9 @@ type TransferResult =
 const movementConfig = {
   walkSpeed: 2.55,
   sneakSpeed: 1.38,
-  readySpeed: 1.86,
+  readyForwardSpeed: 1.86,
+  readySideSpeed: 1.59,
+  readyBackSpeed: 1.25,
   sprintSpeed: 4.2,
   maxCollisionStep: 0.08,
   sprintDrainPerMs: 0.026,
@@ -265,14 +267,17 @@ function makeGameCoordinator({
     const dy = position.y - survivor.position.y;
     const distance = Math.hypot(dx, dy);
     const range = 11 - 4 * neighborhoodDarkness(state.activeTimeMs);
-    return distance <= range && (distance <= 1.75 || survivor.facing.x * dx + survivor.facing.y * dy >= distance * -.5)
-      && traversal.hasLineOfSight(survivor.position, position);
+    const heading = survivor.facing.x * dx + survivor.facing.y * dy;
+    const peripheralRange = heading >= .12 * distance ? range : heading >= -.42 * distance ? 4.25 : 1.55;
+    return distance <= Math.min(range, peripheralRange) && traversal.hasLineOfSight(survivor.position, position);
   }
 
-  function canHear(position: WorldPoint, reach: number) {
+  function listenAt(position: WorldPoint, reach: number) {
     const origin = state.survivor.position;
     const distance = Math.hypot(position.x - origin.x, position.y - origin.y);
-    return distance >= reach ? 0 : (1 - distance / reach) * (traversal.hasLineOfSight(origin, position) ? 1 : .55);
+    if (distance >= reach) return null;
+    const muffled = !traversal.hasLineOfSight(origin, position);
+    return { volume: (1 - distance / reach) * (muffled ? .55 : 1), muffled };
   }
 
   function openingDistance(object: MapObject, origin: WorldPoint, center = openingCenter(object)) {
@@ -311,9 +316,10 @@ function makeGameCoordinator({
         const point = openingCenter(object);
         const distance = openingDistance(object, state.survivor.position, point);
         if (!Number.isFinite(distance)) return [];
+        const defense = state.doorDefenses[object.name];
         const target = {
           kind: 'opening' as const, id: object.name, position: point, object,
-          closed: closed.includes(object), wedged: state.doorDefenses[object.name]?.wedged ?? false,
+          closed: closed.includes(object), wedged: defense?.wedged ?? false, strain: doorStrain(defense),
         };
         return [{ target, distance }];
       }),
@@ -424,26 +430,33 @@ function makeGameCoordinator({
       // Permit separation if a saved or approaching body already overlaps the survivor.
       return separation >= 2 * actorRadius || separation > Math.hypot(from.x - position.x, from.y - position.y);
     });
-    const { walkSpeed, sprintSpeed, sprintDrainPerMs, staminaRecoveryPerMs } = movementConfig;
-    const timeToExhaustion = previous.stamina / sprintDrainPerMs;
-    const timing = previous.attack?.kind === 'shove' ? shoveConfig : batConfig;
+    const { walkSpeed, sprintSpeed, readyForwardSpeed, readySideSpeed, readyBackSpeed } = movementConfig;
+    const { exertion } = carriedLoad(previous.inventory, previous.equippedPackId);
+    const sprintDrain = movementConfig.sprintDrainPerMs * (1 + .45 * exertion);
+    const recovery = movementConfig.staminaRecoveryPerMs * (1 - .30 * exertion);
+    const timeToExhaustion = previous.stamina / sprintDrain;
+    const shoving = previous.attack?.kind === 'shove';
+    const timing = shoving ? shoveConfig : batConfig;
     const sprintMs = sprintRequested && !previous.attack && !sneakHeld && !ready ? Math.min(deltaMs, timeToExhaustion) : 0;
     const sprintPosition = travel(previous.position, direction, sprintSpeed * sprintMs / 1000, canStep);
     const sprinting = sprintPosition !== previous.position;
+    const readyFacing = (pointerTarget && aimFrom(previous.position, pointerTarget)) ?? previous.facing;
+    const heading = direction.x * readyFacing.x + direction.y * readyFacing.y;
+    const readySpeed = readySideSpeed + (heading >= 0 ? readyForwardSpeed - readySideSpeed : readySideSpeed - readyBackSpeed) * heading;
     const stepSpeed = previous.attack ? timing.stepSpeed
-      : sneakHeld ? movementConfig.sneakSpeed : ready ? movementConfig.readySpeed : walkSpeed;
+      : sneakHeld ? movementConfig.sneakSpeed : ready ? readySpeed : walkSpeed;
     const nextPosition = travel(sprintPosition, direction, stepSpeed * (deltaMs - sprintMs) / 1000, canStep);
 
     const exhausted = sprinting && sprintMs >= timeToExhaustion;
     const stamina = sprinting
-      ? exhausted ? 0 : previous.stamina - sprintMs * sprintDrainPerMs
-      : Math.min(100, previous.stamina + deltaMs * staminaRecoveryPerMs);
+      ? exhausted ? 0 : previous.stamina - sprintMs * sprintDrain
+      : shoving ? previous.stamina : Math.min(100, previous.stamina + deltaMs * recovery);
     if (exhausted) sprintRequested = false;
 
     const traveled = Math.hypot(nextPosition.x - previous.position.x, nextPosition.y - previous.position.y);
     const facing = previous.attack?.direction ?? (pointerTarget
       ? aimFrom(nextPosition, pointerTarget)
-      : aimFrom(previous.position, nextPosition)) ?? previous.facing;
+      : ready ? readyFacing : aimFrom(previous.position, nextPosition)) ?? previous.facing;
     const activeTimeMs = state.activeTimeMs + deltaMs;
     let attack = advanceAttack(previous.attack, deltaMs, timing);
     const swingContact = attack?.phase === 'contact' && previous.attack?.phase === 'windup';
@@ -559,7 +572,7 @@ function makeGameCoordinator({
     isReady: () => ready,
     isSneaking: () => sneakHeld,
     canSee,
-    canHear,
+    listenAt,
     aimAt(target) {
       if (pause.getPauseState().isPaused || state.gameOver || state.survivor.attack) return;
       if (target && (!Number.isFinite(target.x) || !Number.isFinite(target.y))) return;

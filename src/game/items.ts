@@ -50,8 +50,10 @@ export interface ItemInstance {
 }
 
 export function carriedLoad(inventory: readonly (ItemInstance | null)[], packId: string | null) {
-  const weight = inventory.reduce((sum, item) => sum + (item ? itemDefinitions[item.kind].weight : 0), 0);
-  return { weight, capacity: packId ? backpackCapacity : baseCarryCapacity };
+  const total = inventory.reduce((sum, item) => sum + (item ? itemDefinitions[item.kind].weight : 0), 0);
+  const weight = Math.round(total * 100) / 100;
+  const exertion = Math.min(1, Math.max(0, (weight - 3.5) / (backpackCapacity - 3.5)));
+  return { weight, capacity: packId ? backpackCapacity : baseCarryCapacity, exertion };
 }
 
 export interface DroppedItem {

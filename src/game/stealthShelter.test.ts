@@ -3,7 +3,8 @@ import test from 'node:test';
 import { shoveConfig } from './combat.ts';
 import { createGameCoordinator, restoreGameCoordinator } from './gameCoordinator.ts';
 import type { GameCoordinator } from './gameCoordinator.ts';
-import { project } from './world.ts';
+import { canOccupy, project } from './world.ts';
+import { createZombies } from './zombie.ts';
 
 const inside = { x: 13.3, y: 8.28 };
 const doorway = 'house_a_door';
@@ -18,11 +19,24 @@ test('a closed door hides the zombie while its muffled sounds still reach the su
   const outside = { x: 15.8, y: 8.28 };
   const game = createGameCoordinator({ position: inside, zombieSpawns: [] });
   assert.equal(game.canSee(outside), true);
-  const audible = game.canHear(outside, 8);
+  const audible = game.listenAt(outside, 8);
+  assert.ok(audible && !audible.muffled);
   closeDoor(game);
   assert.equal(game.canSee(outside), false);
-  assert.ok(game.canHear(outside, 8) > 0 && game.canHear(outside, 8) < audible);
+  const muffled = game.listenAt(outside, 8);
+  assert.ok(muffled?.muffled && muffled.volume > 0 && muffled.volume < audible.volume);
   assert.equal(game.canSee({ x: 9.4, y: 8.28 }), false);
+});
+
+test('turning toward an audible off-axis zombie restores distant visibility along a clear line', () => {
+  const origin = { x: 18, y: 18.5 };
+  const side = { x: 18, y: 23.5 };
+  const game = createGameCoordinator({ position: origin, zombieSpawns: [] });
+  assert.equal(game.canSee(side), false);
+  assert.equal(game.listenAt(side, 8)?.muffled, false);
+  game.aimAt(side);
+  game.step(16);
+  assert.equal(game.canSee(side), true);
 });
 
 test('sneaking is slower and can pass outside the shorter zombie detection range', () => {
@@ -63,9 +77,35 @@ test('ready movement retains aim and a paused shove keeps its remaining active t
   game.closeInventoryPanel();
   const contact = game.step(shoveConfig.windupMs);
   assert.equal(contact.survivor.attack?.kind, 'shove');
+  assert.equal(contact.survivor.stamina, start.survivor.stamina);
   assert.equal(contact.zombies[0]?.health, start.zombies[0]?.health);
   assert.ok(contact.zombies[0]!.position.x > start.zombies[0]!.position.x);
   assert.equal(contact.zombies[0]?.attack?.phase, 'recovery');
+});
+
+test('ready side steps and back steps move progressively slower while keeping the same aim', () => {
+  const origin = { x: 22.1, y: 20.4 };
+  function step(x: number, y: number) {
+    const game = createGameCoordinator({ position: origin, zombieSpawns: [] });
+    game.setReady(true);
+    game.aimAt({ x: origin.x + 8, y: origin.y });
+    game.setMovement(project({ x, y }));
+    return game.step(160).survivor;
+  }
+  const [front, side, back] = [step(1, 0), step(0, 1), step(-1, 0)];
+  assert.ok(front.walkDistance > side.walkDistance && side.walkDistance > back.walkDistance);
+  assert.ok(side.facing.x > .99);
+  assert.deepEqual(back.facing, { x: 1, y: 0 });
+});
+
+test('a shove uses the available space up to a solid wall', () => {
+  const position = { x: 13.33, y: 9.6 };
+  const [zombie] = createZombies([{ id: 'wall', position, destination: position }]);
+  zombie!.receiveShove({ x: 12.78, y: position.y });
+  const displaced = zombie!.getState().position;
+  assert.ok(displaced.x > position.x && displaced.x < 13.9);
+  assert.ok(canOccupy(displaced));
+  assert.equal(zombie!.getState().attack?.kind, 'stagger');
 });
 
 test('a pursuer approaches and forces an ordinary door, while one wedge buys extra time', () => {
@@ -103,6 +143,18 @@ test('a pursuer approaches and forces an ordinary door, while one wedge buys ext
   assert.deepEqual(continued.doorDefenses, reinforced.getState().doorDefenses);
 });
 
+test('a weakened door reports its strain and reinforcement changes the warning threshold', () => {
+  const game = createGameCoordinator({ position: inside, zombieSpawns: [] });
+  closeDoor(game);
+  const closed = game.getState();
+  const worn = restoreGameCoordinator({ ...closed, doorDefenses: { [doorway]: { pressureMs: 1130, wedged: false } } });
+  const wedged = restoreGameCoordinator({ ...closed, doorDefenses: { [doorway]: { pressureMs: 1130, wedged: true } } });
+  const strained = worn.getInteractionTarget();
+  const reinforced = wedged.getInteractionTarget();
+  assert.ok(strained?.kind === 'opening' && strained.strain === 'failing');
+  assert.ok(reinforced?.kind === 'opening' && reinforced.strain === 'intact');
+});
+
 test('weight limits preserve container items and a backpack can only be removed safely', () => {
   const cabinet = 'starter_container';
   const game = createGameCoordinator({
@@ -124,4 +176,24 @@ test('weight limits preserve container items and a backpack can only be removed 
   assert.equal(game.dropItem(0, pack.id).status, 'dropped');
   assert.equal(game.getState().survivor.equippedPackId, null);
   assert.equal(game.getState().droppedItems[0]?.item.id, pack.id);
+});
+
+test('a heavy load drains sprint stamina faster and recovers slower at the same running speed', () => {
+  const position = { x: 22.1, y: 20.4 };
+  const original = createGameCoordinator({ position, zombieSpawns: [] }).getState();
+  const stock = Array.from({ length: 5 }, (_, index) => ({ id: 'water-' + index, kind: 'water_bottle' as const }));
+  const heavy = restoreGameCoordinator({
+    ...original, survivor: { ...original.survivor, inventory: [...stock, ...original.survivor.inventory.slice(stock.length)] },
+  });
+  const light = createGameCoordinator({ position, zombieSpawns: [] });
+  for (const game of [light, heavy]) {
+    game.setMovement(project({ x: 1, y: 0 }), true);
+    game.step(330);
+    game.setMovement({ x: 0, y: 0 });
+  }
+  const beforeHeavy = heavy.getState().survivor;
+  const beforeLight = light.getState().survivor;
+  assert.deepEqual(beforeHeavy.position, beforeLight.position);
+  assert.ok(beforeHeavy.stamina < beforeLight.stamina);
+  assert.ok(heavy.step(120).survivor.stamina - beforeHeavy.stamina < light.step(120).survivor.stamina - beforeLight.stamina);
 });
