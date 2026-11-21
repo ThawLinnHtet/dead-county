@@ -101,8 +101,8 @@ The player must be **in interaction range** of the specific container and have a
 
 ### 4.3 Door and interior behavior
 
-- House A/B/C use already-approved **fixed open doorways**.
-- The player **walks across** the doorway threshold with WASD; no interaction prompt, scene load or teleport occurs.
+- House entrances start open on a fresh run. The player walks across an open threshold with WASD. Press E at the contextual Open or Close prompt to operate the door.
+- Show the wedged state in the door prompt. The player applies a wedge through Inventory from inside beside the closed door.
 - Entering makes that house's roof hide/fade automatically (with wall occlusion handled by the approved interior system).
 - When an indoor cabinet, drawer or supply box wins selection, anchor `E Search` at that container.
 - Zombies use the same doorway and world navigation; search prompts do not alter collision/pathfinding.
@@ -110,7 +110,7 @@ The player must be **in interaction range** of the specific container and have a
 ### 4.4 Loot panel behavior
 
 - The panel pauses/suppresses world simulation as established by the master PRD's blocking-overlay convention.
-- Only Baseball Bat, Canned Food, Water Bottle, and Bandage may be received from MVP containers.
+- Transfer the authored supplies carried by the selected container. Report capacity limits in the Loot interface.
 - Inventory is **12 fixed slots**, **one item instance per slot**, **no stacks or quantity badges**.
 - A full inventory prevents transfer without item loss/duplication and gives a clear error.
 - Transferred/depleted contents are persisted to the local run save.

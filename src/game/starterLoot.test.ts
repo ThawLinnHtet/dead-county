@@ -43,7 +43,7 @@ test('both survivors can walk to the same starter supplies and transfer each ins
 test('a full inventory preserves the selected container item and reports capacity', () => {
   const game = createGameCoordinator({
     position: { x: 11.9, y: 9.15 },
-    containerStock: { [cabinet]: Array<'water_bottle'>(13).fill('water_bottle') },
+    containerStock: { [cabinet]: Array<'bandage'>(13).fill('bandage') },
   });
   const items = game.getState().containers[cabinet]!;
   assert.equal(game.search(cabinet), true);

@@ -28,8 +28,12 @@ export const districtBuildings = blocks.flatMap((block, blockIndex) => [
   const front = y + height - .14;
   const entrance = x + width / 2 - .75;
   const windowY = y + 1.6;
+  const expanded = [...stock] as ItemKind[];
+  if (featured) expanded.push(blockIndex % 2 === 0 ? 'door_wedge' : 'trail_mix');
+  if (lot === 1 && blockIndex === 0) expanded.push('backpack');
   return {
-    id, name, featured, stock: stock as readonly ItemKind[],
+    id, name, featured, unexpandedStock: stock as readonly ItemKind[],
+    stock: expanded,
     palette: (blockIndex + lot) % 3,
     house: mapObject(id, 'interior', x, y, width, height),
     walls: [

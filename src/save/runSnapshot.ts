@@ -1,13 +1,15 @@
 import type { GameCoordinator, GameSnapshot } from '../game/gameCoordinator.ts';
-import { batConfig } from '../game/combat.ts';
-import { authoredStock, seedContainers, starterStock } from '../game/items.ts';
+import { batConfig, shoveConfig } from '../game/combat.ts';
+import type { AttackState } from '../game/combat.ts';
+import { authoredStock, expandedStock, seedContainers, starterStock } from '../game/items.ts';
 import type { ItemInstance } from '../game/items.ts';
+import { doorResistance } from '../game/shelter.ts';
 import { canOccupy, houses, initiallyClosed, mapHeight, mapWidth, openings, starterZombieSpawns, zombieSpawns } from '../game/world.ts';
 import type { MapObject, WorldPoint } from '../game/world.ts';
 import { createZombies, zombieConfig } from '../game/zombie.ts';
 import type { ZombieState } from '../game/zombie.ts';
 
-export const saveSchemaVersion = 2;
+export const saveSchemaVersion = 3;
 export const saveWorldVersion = 'neighborhood-2';
 export const slotKey = 'local';
 
@@ -36,8 +38,10 @@ type SaveRecord = {
 
 const initialContainers = seedContainers(authoredStock);
 const starterContainers = seedContainers(starterStock);
+const expandedContainers = seedContainers(expandedStock);
 const authoredItems = new Map(Object.values(initialContainers).flat().map((item) => [item.id, item.kind]));
 const starterItems = new Map(Object.values(starterContainers).flat().map((item) => [item.id, item.kind]));
+const expandedItems = new Map(Object.values(expandedContainers).flat().map((item) => [item.id, item.kind]));
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -65,9 +69,12 @@ function direction(value: unknown) {
     && Math.abs(Math.hypot(value.x, value.y) - 1) <= 1e-6;
 }
 
-function attack(value: unknown, timing: Pick<typeof batConfig, 'windupMs' | 'contactMs' | 'recoveryMs'>) {
+function attack(value: unknown, timing: Pick<typeof batConfig, 'windupMs' | 'contactMs' | 'recoveryMs'>, kind?: AttackState['kind']) {
   if (value === null) return true;
-  if (!isRecord(value) || !direction(value.direction) || typeof value.damageApplied !== 'boolean') return false;
+  if (!isRecord(value) || value.kind !== kind || !direction(value.direction) || typeof value.damageApplied !== 'boolean') return false;
+  if (kind === 'stagger') {
+    return value.phase === 'recovery' && !value.damageApplied && finite(value.remainingMs, Number.MIN_VALUE, shoveConfig.staggerMs);
+  }
   switch (value.phase) {
     case 'windup': return !value.damageApplied && finite(value.remainingMs, Number.MIN_VALUE, timing.windupMs);
     case 'contact': return finite(value.remainingMs, Number.MIN_VALUE, timing.contactMs);
@@ -81,12 +88,14 @@ function isNavigationRetry(value: unknown, activeTimeMs: number) {
     && value.failures > 0 && finite(value.nextAttemptAtMs, 0, activeTimeMs + zombieConfig.pathRefreshMs));
 }
 
-function isZombie(value: unknown, index: number, activeTimeMs: number, closed: readonly MapObject[], legacy: boolean) {
+function isZombie(value: unknown, index: number, activeTimeMs: number, closed: readonly MapObject[], schema: number) {
   const authored = zombieSpawns[index];
-  if (!authored || !isRecord(value) || value.id !== authored.id || value.appearanceId !== authored.appearanceId
+  if (!authored || !isRecord(value)) return false;
+  const staggered = schema >= 3 && isRecord(value.attack) && value.attack.kind === 'stagger';
+  if (value.id !== authored.id || value.appearanceId !== authored.appearanceId
       || !point(value.position) || !canOccupy(value.position, undefined, value.health === 0 ? [] : closed) || !finite(value.health, 0, zombieConfig.health)
       || !(value.lastBatHitAtMs === null || finite(value.lastBatHitAtMs, 0, activeTimeMs))
-      || !attack(value.attack, zombieConfig.bite) || (value.health === 0 && value.attack !== null)
+      || !attack(value.attack, zombieConfig.bite, staggered ? 'stagger' : undefined) || (value.health === 0 && value.attack !== null)
       || !finite(value.walkDistance) || typeof value.facingLeft !== 'boolean' || typeof value.moving !== 'boolean'
       || !isRevision(value.randomState) || value.randomState > 0xffffffff || !isRecord(value.behavior)
       || !isNavigationRetry(value.navigationRetry, activeTimeMs)) return false;
@@ -97,30 +106,39 @@ function isZombie(value: unknown, index: number, activeTimeMs: number, closed: r
       && (behavior.graceRemainingMs === null || finite(behavior.graceRemainingMs, 0, zombieConfig.pursuitGraceMs));
   }
   if (behavior.kind === 'investigate') {
-    return !legacy && point(behavior.destination) && finite(behavior.remainingMs, Number.MIN_VALUE, zombieConfig.investigateMs);
+    return schema >= 2 && point(behavior.destination) && finite(behavior.remainingMs, Number.MIN_VALUE, zombieConfig.investigateMs);
   }
   return behavior.kind === 'wander' && (behavior.destination === null || point(behavior.destination))
     && finite(behavior.idleRemainingMs, 0, zombieConfig.wanderIdleMs);
 }
 
-function isAliveSnapshot(value: unknown, legacy: boolean): value is GameSnapshot {
+function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot {
   if (!isRecord(value) || !finite(value.activeTimeMs) || !isRecord(value.survivor)) return false;
-  const { survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds } = value;
+  const legacy = schema === 1;
+  const older = schema < 3;
+  const { survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds, doorDefenses } = value;
   if (!legacy && (!Array.isArray(closedOpeningIds) || closedOpeningIds.length > openings.length
       || closedOpeningIds.length !== new Set(closedOpeningIds).size
       || !closedOpeningIds.every((id) => openings.some(({ name }) => name === id)))) return false;
   const closed = legacy ? [] : openings.filter(({ name }) => (closedOpeningIds as string[]).includes(name));
-  const stockByContainer = legacy ? starterContainers : initialContainers;
-  const allowedItems = legacy ? starterItems : authoredItems;
+  const stockByContainer = legacy ? starterContainers : older ? expandedContainers : initialContainers;
+  const allowedItems = legacy ? starterItems : older ? expandedItems : authoredItems;
+  if (!older && (!isRecord(doorDefenses) || Object.keys(doorDefenses).length > closed.length
+    || !Object.entries(doorDefenses).every(([id, defense]) =>
+      closed.some((door) => door.name === id && door.type === 'door') && isRecord(defense)
+      && typeof defense.wedged === 'boolean' && finite(defense.pressureMs)
+      && defense.pressureMs < doorResistance(defense.wedged)))) return false;
   if (occupiedHouseId !== undefined && occupiedHouseId !== null
       && !houses.some(({ name }) => name === occupiedHouseId)) return false;
+  const shoving = !older && isRecord(survivor.attack) && survivor.attack.kind === 'shove';
   if (!(survivor.characterId === 'survivor_male' || survivor.characterId === 'survivor_female')
       || !point(survivor.position) || !canOccupy(survivor.position, undefined, closed)
       || (!legacy && typeof survivor.bleeding !== 'boolean')
       || !finite(survivor.health, Number.MIN_VALUE, 100) || !finite(survivor.stamina, 0, 100) || !finite(survivor.hunger, 0, 100) || !finite(survivor.thirst, 0, 100)
       || !(survivor.lastBiteAtMs === null || finite(survivor.lastBiteAtMs, 0, activeTimeMs))
       || !finite(survivor.walkDistance) || !direction(survivor.facing) || typeof survivor.facingLeft !== 'boolean'
-      || !attack(survivor.attack, batConfig) || !Array.isArray(survivor.inventory) || survivor.inventory.length !== 12
+      || !attack(survivor.attack, shoving ? shoveConfig : batConfig, shoving ? 'shove' : undefined)
+      || !Array.isArray(survivor.inventory) || survivor.inventory.length !== 12
       || !isRecord(containers) || !Array.isArray(droppedItems) || droppedItems.length > allowedItems.size
       || !Array.isArray(zombies) || zombies.length !== (legacy ? starterZombieSpawns.length : zombieSpawns.length)) return false;
 
@@ -137,7 +155,9 @@ function isAliveSnapshot(value: unknown, legacy: boolean): value is GameSnapshot
   }
   if (survivor.equippedWeaponId !== null &&
     !survivor.inventory.some((item) => item?.kind === 'baseball_bat' && item.id === survivor.equippedWeaponId)) return false;
-  if (survivor.attack !== null && survivor.equippedWeaponId === null) return false;
+  if (!older && survivor.equippedPackId !== null &&
+    !survivor.inventory.some((item) => item?.kind === 'backpack' && item.id === survivor.equippedPackId)) return false;
+  if (survivor.attack !== null && !shoving && survivor.equippedWeaponId === null) return false;
 
   for (const [id, stock] of Object.entries(stockByContainer)) {
     const items = containers[id];
@@ -150,15 +170,15 @@ function isAliveSnapshot(value: unknown, legacy: boolean): value is GameSnapshot
     if (!isRecord(drop) || !claim(drop.item) || !point(drop.position) || !canOccupy(drop.position, .17, closed)) return false;
   }
   for (const [index, zombie] of zombies.entries()) {
-    if (!isZombie(zombie, index, activeTimeMs, closed, legacy)) return false;
+    if (!isZombie(zombie, index, activeTimeMs, closed, schema)) return false;
   }
   return true;
 }
 
 export function captureRun(coordinator: GameCoordinator): GameSnapshot {
-  const { survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds } = coordinator.getState();
+  const { survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds, doorDefenses } = coordinator.getState();
   const { gait: _gait, ...savedSurvivor } = survivor;
-  return { survivor: savedSurvivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds };
+  return { survivor: savedSurvivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds, doorDefenses };
 }
 
 export function saveRecord(revision: number, run: SavedRun | null): SaveRecord {
@@ -180,8 +200,8 @@ function copyItem({ id, kind }: ItemInstance): ItemInstance {
 
 function copyAttack(attack: GameSnapshot['survivor']['attack']): GameSnapshot['survivor']['attack'] {
   if (!attack) return null;
-  const { phase, direction, remainingMs, damageApplied } = attack;
-  return { phase, direction: copyPoint(direction), remainingMs, damageApplied };
+  const { phase, direction, remainingMs, damageApplied, kind } = attack;
+  return { phase, direction: copyPoint(direction), remainingMs, damageApplied, ...(kind && { kind }) };
 }
 
 function copyBehavior(behavior: ZombieState['behavior']): ZombieState['behavior'] {
@@ -192,8 +212,12 @@ function copyBehavior(behavior: ZombieState['behavior']): ZombieState['behavior'
   }
 }
 
-function copySnapshot({ survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds }: GameSnapshot,
-  legacy: boolean): GameSnapshot {
+function copySnapshot({ survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds, doorDefenses }: GameSnapshot,
+  schema: number): GameSnapshot {
+  const legacy = schema === 1;
+  const older = schema < 3;
+  const oldItems = legacy ? starterItems : expandedItems;
+  const knownContainers = legacy ? starterContainers : older ? expandedContainers : initialContainers;
   const {
     characterId, position, health, stamina, hunger, thirst, inventory, equippedWeaponId,
     facing, facingLeft, attack, lastBiteAtMs, walkDistance, bleeding,
@@ -203,14 +227,20 @@ function copySnapshot({ survivor, containers, droppedItems, zombies, activeTimeM
     activeTimeMs,
     occupiedHouseId,
     closedOpeningIds: [...(legacy ? initiallyClosed : closedOpeningIds ?? [])],
+    doorDefenses: older ? {} : Object.fromEntries(Object.entries(doorDefenses!).map(([id, defense]) => [
+      id, { pressureMs: defense!.pressureMs, wedged: defense!.wedged },
+    ])),
     survivor: {
       characterId, position: copyPoint(position), health, stamina, hunger, thirst,
       inventory: inventory.map((item) => item ? copyItem(item) : null), equippedWeaponId,
+      equippedPackId: older ? null : survivor.equippedPackId,
       facing: copyPoint(facing), facingLeft, attack: copyAttack(attack), lastBiteAtMs, walkDistance, bleeding: legacy ? false : bleeding,
     },
-    containers: Object.fromEntries(Object.keys(initialContainers).map((id) => [
-      id, (legacy && !Object.hasOwn(starterContainers, id) ? initialContainers[id]! : containers[id]!).map(copyItem),
-    ])),
+    containers: Object.fromEntries(Object.entries(initialContainers).map(([id, authored]) => {
+      const items = Object.hasOwn(knownContainers, id) ? containers[id]! : [];
+      const newItems = older ? authored.filter((item) => !oldItems.has(item.id)) : [];
+      return [id, [...items, ...newItems].map(copyItem)];
+    })),
     droppedItems: droppedItems.map((drop) => ({ item: copyItem(drop.item), position: copyPoint(drop.position) })),
     zombies: [...zombies, ...expandedZombies].map((zombie) => {
       const {
@@ -232,12 +262,13 @@ export function inspectSaveRecord(record: unknown): SaveRead {
   if (!isRecord(record) || record.key !== slotKey || !isRevision(record.schemaVersion)) return { kind: 'damaged' };
   if (record.schemaVersion > saveSchemaVersion) return { kind: 'unsupported', reason: 'newer_schema' };
   const revision = readRevision(record);
-  const legacy = record.schemaVersion === 1;
-  if ((!legacy && record.schemaVersion !== saveSchemaVersion) || typeof record.worldVersion !== 'string'
+  const schema = record.schemaVersion;
+  const legacy = schema === 1;
+  if (schema < 1 || typeof record.worldVersion !== 'string'
     || !record.worldVersion.length || revision === undefined) return { kind: 'damaged' };
   if (record.worldVersion !== (legacy ? 'neighborhood-1' : saveWorldVersion)) return { kind: 'unsupported', reason: 'world' };
   if (record.run === null) return { kind: 'dead', revision };
-  if (!isRecord(record.run) || !isRunId(record.run.id) || !isAliveSnapshot(record.run.snapshot, legacy)) return { kind: 'damaged' };
+  if (!isRecord(record.run) || !isRunId(record.run.id) || !isAliveSnapshot(record.run.snapshot, schema)) return { kind: 'damaged' };
 
-  return { kind: 'ready', revision, run: { id: record.run.id, snapshot: copySnapshot(record.run.snapshot, legacy) } };
+  return { kind: 'ready', revision, run: { id: record.run.id, snapshot: copySnapshot(record.run.snapshot, schema) } };
 }

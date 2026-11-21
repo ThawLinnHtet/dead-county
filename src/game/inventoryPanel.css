@@ -228,6 +228,13 @@
 
 .inventory-hint { margin-top: .65rem; }
 
+.inventory-carry {
+  margin: 0 0 .55rem;
+  color: var(--dc-text-muted, #c0b5a5);
+  font-size: .75rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .item-detail-heading {
   display: flex;
   align-items: center;

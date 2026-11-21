@@ -1,6 +1,6 @@
 # Dead County — Master Product Requirements Document (PRD)
 
-> **Version 2.23 · 2026-11-21**
+> **Version 2.24 · 2026-11-21**
 >
 > **Status:** Approved MVP product scope; final production geometry, UI screen mockups, and asset atlases remain subject to implementation validation  
 > **Product:** Dead County — original 2D isometric zombie-survival game inspired by the genre of *Project Zomboid*  
@@ -38,6 +38,7 @@
 | v2.21 | 2026-11-19 | Defined screen-relative WASD, deliberate sprint re-engagement after exhaustion and fresh movement input after a pause or Continue. |
 | **v2.22** | **2026-11-19** | Defined feedback for movement, bat hits, zombie bites, need-related health loss and inventory actions. |
 | **v2.23** | **2026-11-21** | Expanded the connected neighborhood. Added interactive entrances, noise investigation, day and night, bleeding treatment, and schema-one migration. |
+| **v2.24** | **2026-11-21** | Added survivor visibility, sneaking, directional audio and animation, ready stance, shove, carry limits, and door reinforcement. |
 
 ---
 
@@ -45,7 +46,7 @@
 
 Dead County is a grounded, single-player, browser-based isometric survival game in a deserted suburban neighborhood after a zombie outbreak. The player selects one of **two equally capable default survivors** (male or female), explores a compact neighborhood, enters houses without loading screens, avoids or fights zombies, scavenges essential resources, manages survival needs, and attempts to live as long as possible.
 
-Dead County is a free single-player desktop browser survival game. The expanded release connects the three starter houses to six additional blocks. It includes 21 enterable buildings, 20 authored zombies, one melee weapon type, four item types, a 12-slot inventory, two map views, a local run slot, and a death-and-restart flow.
+Dead County is a free single-player desktop browser survival game. The expanded release connects the three starter houses to six additional blocks. It includes 21 enterable buildings, 20 authored zombies, melee and stealth, seven item types, a 12-slot inventory, two map views, a local run slot, and a death-and-restart flow.
 
 ### 1.1 Product promise
 
@@ -113,20 +114,20 @@ Do not pull post-MVP capabilities into a milestone because an asset or design mo
 |---|---|---|
 | Players | 2 selectable default characters: male/female; same mechanics | Character creator, alternate outfits, traits, leveling |
 | Environment | 1 handcrafted isometric neighborhood; roads, yards, sidewalks, fences, static cars and props | Open-world streaming, large cities, generated regions, destruction |
-| Buildings | 21 single-floor enterable destinations, seamless entry, roof and near-wall fade, operable doors and windows | Multistory floors, locks, and construction |
-| Enemies | 10–20 active standard zombies; 5 visual variants incl. female; FSM + A* navigation | Fast/strong classes, hearing/noise, hordes, advanced AI, NPC enemies |
-| Combat | Baseball bat melee; attacks, damage, cooldowns, death | Firearms, ammunition, durability, multiple weapons, skills |
+| Buildings | 21 enterable destinations, seamless entry, operable openings, door pressure and wedges | Multistory floors, locks, and construction |
+| Enemies | 10–20 active zombies, five visual variants, line of sight and sound investigation, FSM and A* navigation | Fast/strong classes, hordes, advanced AI, NPC enemies |
+| Combat | Baseball Bat, ready stance, stamina-costing shove, timed attacks and recovery | Firearms, ammunition, durability, multiple weapons, skills |
 | Player stats | Health, stamina, hunger, thirst; elapsed survival duration | Temperature, disease/infection, sleep, deep injuries |
-| Items | Baseball Bat, Canned Food, Water Bottle, Bandage | Other consumables, stacks, materials, cooking, crafting |
-| Inventory | Fixed 12 slots; pickup/use/equip/drop | Encumbrance, capacity upgrades, stack/weight systems |
+| Items | Baseball Bat, Canned Food, Water Bottle, Bandage, Trail Mix, Canvas Backpack and Door Wedge | Item stacks, materials, cooking, crafting |
+| Inventory | Fixed 12 slots, carry limits, pickup/use/equip/drop | Larger grids, multiple bags or stacks |
 | Looting | Cabinet, Drawer, Supply Box inside houses | Mailbox/car looting, random global loot economy |
 | HUD/menus | Main, choose survivor, controls, gameplay HUD, inventory, loot, pause/save, game over, confirmations | Crafting/skills/vehicle dashboards, complicated settings |
 | Navigation UI | Circular **north-up** minimap, full neighborhood map, player arrow | Fog of war, pins, quest routes, regions, enemy/loot reveal |
-| Time/lighting | Fixed daytime and elapsed survival time | Day/night cycle, dynamic weather and clock |
+| Time/lighting | Day/night cycle, elapsed survival time, reduced nighttime sight range | Dynamic weather |
 | Save | 1 active local IndexedDB save slot; manual save/load; game-over invalidates continuation | Accounts, multiple cloud slots, sync and conflict resolution |
 | Infrastructure | Static Vite deployment to Vercel, no dedicated backend | Supabase Auth + PostgreSQL JSONB, server-based multiplayer |
 | AI | Rule-based finite-state machines and pathfinding; no external AI service | Behavior trees/utility AI and optional NPC-dialogue LLM |
-| Audio and effects | Bat swing and confirmed impact sounds, readable damage cues and inventory feedback | Full soundtrack, advanced spatial audio and cinematic effects |
+| Audio and effects | Stereo footsteps, groans and door impacts, bat swing and contact cues, inventory feedback | Full soundtrack and cinematic effects |
 
 The Corner Store, Birch Clinic, Cedar Workshop and the other authored landmarks are playable destinations. Searchable containers remain mapped indoor objects.
 
@@ -212,6 +213,7 @@ The Corner Store, Birch Clinic, Cedar Workshop and the other authored landmarks 
 - **FR-W19:** The expanded neighborhood contains 21 enterable buildings, including the three original houses and distinct landmarks. Validate routes to supplies using the same seamless movement and occlusion at every entrance.
 - **FR-W20:** The contextual E prompt can open or close an indicated door or operable window. Open passages are traversable. Closed openings block movement and direct sight for both sides. Reject a close request when a living actor or dropped item blocks it.
 - **FR-W21:** Update world lighting and zombie sight reach from the in-game clock. The clock starts at 08:00. One full day takes 12 minutes of active play at the first tuning pass.
+- **FR-W22:** A survivor can use a Door Wedge from inside beside a reachable closed door. The wedge is consumed once and extends the door's resistance to zombies approaching a confirmed last known position. Pursuit still expires in active simulation time. Opening or forcing the door clears its pressure and wedge state.
 
 ### 5.3 Map dimensions and asset conventions
 
@@ -246,7 +248,7 @@ The Corner Store, Birch Clinic, Cedar Workshop and the other authored landmarks 
 - **Male survivor (`survivor_male`):** ordinary adult; messy dark hair, worn muted olive jacket, dark layers/trousers, practical brown boots and a worn canvas backpack.
 - **Female survivor (`survivor_female`):** ordinary adult; tied-back dark/brown hair, faded rust-burgundy utility jacket, dark functional trousers, brown boots and same-capacity canvas backpack.
 - Characters should look **alive and grounded**, with believable breathing, foot contact, weight transfer and subtle clothing/backpack secondary motion.
-- The backpack is fixed costume art, **not** an expanded inventory item or extra equipment slot.
+- The survivor portraits and base sprites can show cosmetic gear. Carry capacity changes only when the player equips a scavenged Canvas Backpack.
 - Eight-direction presentation is the target, with pragmatic reuse only when visual credibility is maintained.
 - No clothing customization, traits, classes, biographies or gender-based mechanics.
 
@@ -275,6 +277,7 @@ Both characters can independently start a run, walk, sprint, fight, loot, save, 
 - **FR-Z19:** A zombie encountered inside House A on a later visit must have entered through simulated movement along a valid route. Returning, revealing the roof or activating a distant area cannot spawn, relocate or reroll it. Save & Exit and Continue preserve its identity, position and movement state. If distance-based simulation is used, its return-visit outcome must remain consistent with ordinary simulation.
 - **FR-Z20:** On a comparable clear route, a pursuing zombie moves slightly faster than a walking survivor, while a survivor sprinting with available stamina moves faster than the zombie. Sprint spends stamina and changes distance. Detection, sight loss, the last known position and pursuit expiry still govern Chase. Tune speeds and sprint drain in the playable map.
 - **FR-Z21:** Footsteps, bat swings and opening interactions emit sound at their world position. Sprinting carries farther than walking. Cover reduces sound reach. A zombie can investigate the last audible point, with its own simulation timer. Confirmed sighting takes priority and existing pursuit continues using its last visible position.
+- **FR-Z22:** Render a zombie only when its position lies in the survivor's field of view and has a clear sight line. Nearby threats around the survivor have a wider viewing angle. Audible footsteps and groans can still be heard through cover, with reduced volume and stereo direction. Holding C lowers speed, footstep noise, and the range at which zombies see the survivor.
 - **FR-Z17:** Each zombie records the survivor’s last known position only when its own perception check confirms range and line of sight. On losing sight, it pursues that fixed world position for the remaining grace period. Hidden survivor movement cannot update the destination. Arrival permits waiting and checking visibility. The first successful reacquisition updates the position and immediately resumes visible Chase.
 - **FR-Z18:** The grace period starts on loss of confirmed visibility and advances only during active simulation. Arrival, repeated failed visibility checks and path retries leave its expiry unchanged. If the position is unreachable, use the existing obstacle-aware navigation failure behavior and continue perception checks from a valid position. On expiry without reacquisition, abandon the pursuit path and start ordinary Wander at the zombie’s current world position. Its spawn and former patrol area have no special priority. Normal perception remains active during Wander.
 
@@ -300,7 +303,7 @@ A label like **Fast**, **High HP**, or **Aggressive** shown in old concept art i
 - Chase may reuse ordinary walk/locomotion frames; running zombie classes are not MVP scope.
 - Do not recompute an entire A* path on every render frame. Throttle AI/path requests and manage unreachable routes safely.
 - Zombie population does not automatically respawn or form large dynamic hordes in v1.0.
-- No LLM, network inference, hearing/noise simulation or advanced behavior tree in MVP.
+- Hearing uses the simulation's world sound events. Perception and pursuit use local rules.
 
 ### 7.3 Acceptance
 
@@ -317,7 +320,7 @@ With 20 active zombies, wandering, detection, chase, attack, death and doorway n
 - **FR-C07–C08:** Clear hit feedback and small knockback when appropriate.
 - **FR-C09–C10:** Zombie attacks affect player health and cooldown prevents unintentional multi-hits.
 - **FR-C11:** Combat input is suppressed while gameplay is paused or a blocking menu/overlay is active.
-- **FR-C12:** Primary mouse button (**Left Click**) on the active game world triggers one eligible baseball-bat melee attack; `Space` is **not** an MVP attack binding.
+- **FR-C12:** Primary mouse button (**Left Click**) on the active game world triggers one eligible baseball-bat attack.
 - **FR-C13:** At the click that starts a swing, convert the pointer to logical world coordinates and lock the direction from the survivor to that point. Use that direction throughout the swing and show the nearest supported facing animation. As the survivor steps, the swing arc moves with them and keeps its heading.
 - **FR-C14:** Attacks use existing combat range, attack arc, line-of-sight/solid-obstacle and cooldown checks; the cursor itself does not select an automatically hit target.
 - **FR-C15:** A click on any React menu, HUD/minimap control, inventory, map, loot panel, dialog or other interactive overlay must **not** trigger a world attack. Clicking while paused, dead, unarmed, during a blocking overlay or while otherwise ineligible also cannot attack.
@@ -330,7 +333,7 @@ With 20 active zombies, wandering, detection, chase, attack, death and doorway n
 - **FR-C22:** Inventory and pause overlays own the entire pointer gesture on their controls, including release over the world after the overlay closes. Clicking Use, a slot, Close or Resume produces zero new attack commands, immediately or on the next gameplay step. A fresh press in the active gameplay world is required for the next swing.
 - **FR-C23:** A hit and a miss use the same bat swing animation and a short swing sound. Confirmed damage adds a distinct impact sound and one brief visual cue on the zombie that took the hit. The impacted zombie must be identifiable at default zoom with audio muted. Use the actual damage event to time the cue.
 - **FR-C24:** A zombie bite has a visually distinct anticipation pose before contact, then a bite motion and a readable recovery. The pose is readable at default zoom. Playtest whether a newcomer recognizes it in time to try stepping clear. Damage timing and reach follow the gameplay rules.
-- **Scope:** `Space` is unassigned in the MVP; push/shove and right-click combat stance are post-MVP candidates, not implemented features.
+- **FR-C25:** Holding the right mouse button in the world keeps the survivor facing their aim and slows movement. Pressing Space spends Stamina to commit a short shove. The shove selects one visible, in-range target with the deterministic attack ordering and staggers it without damage. It freezes with other attacks during pauses and survives Continue.
 - Unarmed is an allowed equipment **display state**; a full unarmed combat damage system is **not** mandatory. Exactly one weapon item type is supported.
 - No firearm, ammunition, critical hit trees, weapon durability, blocking skill or limb-specific simulation.
 
@@ -374,9 +377,10 @@ With 20 active zombies, wandering, detection, chase, attack, death and doorway n
 - **FR-I14:** Try the survivor’s feet first. If blocked, try the nearest walkable position within immediate pickup reach on the same side of the obstacle. Validate the position and successfully place the item in the world before clearing its original slot or equipped reference. Commit these changes together. If validation or placement fails, keep the instance in its original slot with its prior equipment state, discard any partial world drop, and show “Cannot drop item here.”
 - **FR-I15:** After a successful Transfer, briefly highlight the receiving slot in the Loot panel. After Equip, mark the bat’s occupied slot as equipped. After Use, show the affected stat and resulting value in the open panel. Trigger these cues from successful gameplay results. Rejected or disabled actions show the appropriate existing state or error.
 - **FR-I16:** In Inventory and Loot, drag an inventory item to an empty slot to move it or onto another item to swap their positions. **Move** and selecting a destination provide a keyboard and click alternative. Reordering keeps each item's identity, equipped state and saved slot. Dragging an inventory item onto **Drop** uses FR-I14. Cancelling or releasing outside a valid target leaves all items in place.
-- **FR-I17:** The HUD mirrors the first ten positions of the same inventory as clickable quick slots. Activating an occupied bat slot during play equips that instance directly when no swing is active. Activating a consumable slot opens Inventory with the item selected for an explicit Use action. Empty slots have no action. These controls never swing the bat, skip item validation, or add storage capacity or number-key shortcuts.
+- **FR-I17:** The HUD mirrors the first ten positions of the same inventory as clickable quick slots. Activating an occupied bat slot during play equips that instance directly when no swing is active. Activating another occupied slot opens Inventory with that item selected. Empty slots have no action.
+- **FR-I18:** Display carried weight and capacity. Pickups and transfers must fit both the weight limit and a vacant slot. A Canvas Backpack raises capacity from 5 kg to 9 kg when equipped. If unequipping or dropping it would leave the survivor over the base limit, the backpack stays equipped and inventory stays intact. Earlier saves may start above the base limit and can free weight normally.
 
-**Only four MVP item types:**
+**Guaranteed starter and essential supply types:**
 
 | Item ID (illustrative) | Display name | Gameplay action |
 |---|---|---|
@@ -392,7 +396,7 @@ Use one instance per slot; the specific internal identifiers may be centralized 
 - **FR-L01–L04:** Every house has at least one approved lootable container; display `E` prompt when in valid range and allow interaction.
 - **FR-L05–L08:** Transfer only if there is capacity, remove taken items from container, persist depletion, and ensure a baseball bat is reachable safely in House A.
 - **FR-L09:** `E` means search/interact, **not house entry**.
-- **FR-L10–L11:** Only **Cabinet**, **Drawer**, **Supply Box** and the above four item types are functional in the MVP.
+- **FR-L10–L11:** Searchable containers are Cabinet, Drawer and Supply Box. Additional authored loot includes a Canvas Backpack and Door Wedge in House B's living-room cabinet, plus Trail Mix in the expanded neighborhood.
 - **FR-L12:** House B supplies scavenging opportunities; House C creates reward/tension using current normal mechanics.
 - **FR-L16:** Every fresh run seeds House A’s designated starter container with exactly one Baseball Bat and at least one Water Bottle, independent of survivor choice and loot rolls. Reach it by the short indoor route in FR-W18. Pressing `E Search` opens the ordinary blocking Loot interface. Transfer each selected instance into the first empty inventory slot, left to right and top to bottom. The bat requires explicit Equip. Water requires explicit Use, which is disabled at zero Thirst. Other House A containers may hold optional supplies.
 - **FR-L17:** The starter container uses the same container identity, pause, transfer and persistence rules as other searchable containers. Seed its contents only at fresh-run creation. Reopening it or continuing a save restores the remaining instances, including an empty container.
@@ -724,7 +728,7 @@ Each milestone should leave a demonstrable vertical slice and a buildable reposi
 |---|---|---|
 | **M1 — Foundation** | React+Phaser scaffold; two-character Choose Survivor; prototype isometric tile geometry; basic player movement/sprint/camera/collision; House A interior, open entry, roof hide; expand to Houses B/C after proof | Both survivors can spawn in A, move, enter/exit, see proper roof/occlusion; map walkability and 3 accessible houses coherent |
 | **M2 — Zombie & Combat** | Standard FSM, detection/chase/attack/death, pathfinding incl. doorways, five cosmetic looks, bat equip/**mouse-directed Left Click** attack, health/game-over | Player can evade/fight/die; aiming follows mouse in world coordinates; 10–20 zombies work without wall walking or major stalls |
-| **M3 — Inventory & Loot** | 12-slot inventory, four item types, 3 container types, loot transfer/use/equip/drop, interior placement; basic circular minimap/full-map UI after world stabilizes | Player can loot 3 houses and navigate both map modes without duplicating or losing items |
+| **M3 — Inventory & Loot** | 12-slot inventory, authored item catalog, three container types, transfers, use, equip and drop, carry weight, basic map views | Player can loot three houses and navigate both map modes without duplicating or losing items |
 | **M4 — Survival Loop** | Hunger, thirst, stamina balancing, four-bar HUD, elapsed survival time, blocking overlay pause semantics, feedback polish | Full survival loop works with consistent pause/resume and map/inventory behavior |
 | **M5 — Save & Ship** | Dexie save repository, versioning, local resume, character/zombie/loot and indoor roof restore; game-over invalidation, browser QA, audio basics, Vercel deploy | End-to-end new game → exploration → fight/loot/survive → save/continue → death/restart works on production URL |
 
@@ -804,7 +808,7 @@ All statements below must be true:
 - [ ] Roof and relevant occluding walls reveal each interior automatically; same world/camera remains active.
 - [ ] 10–20 zombies operate with one standard AI configuration and five non-mechanical visuals (including female zombie).
 - [ ] Zombie AI detects, navigates, chases, attacks, loses targets and dies without obvious wall errors.
-- [ ] Only the baseball bat is a functional weapon; Left Click mouse-directed melee works only on the active world, never on UI or while ineligible; four item types and three container types work.
+- [ ] The Baseball Bat works through an eligible Left Click in the active world. Space starts an eligible shove. Test seven item types and three container types.
 - [ ] Twelve-slot inventory, looting, equip/use/drop and full-capacity failures are reliable.
 - [ ] Health, stamina, hunger, thirst and active survival duration behave as documented.
 - [ ] Circular minimap and full map work, match the world and never reveal hidden zombie/loot data.

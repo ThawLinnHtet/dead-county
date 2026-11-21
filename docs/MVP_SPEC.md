@@ -8,7 +8,7 @@ A desktop player wants to start a tense survival run in their browser, figure ou
 
 ## Solution
 
-Build an original single-player isometric survival game in one authored neighborhood with 21 enterable buildings. Let the player choose either of two mechanically identical survivors, find and equip a bat, scavenge, manage noise, secure a building by closing its openings, and survive into later days. Ship with a keyboard-and-mouse interface, one local save slot and a death-and-restart flow.
+Build an original single-player isometric survival game in one authored neighborhood with 21 enterable buildings. Let the player choose either of two mechanically identical survivors, find and equip a bat, move quietly past zombies, scavenge within a carry limit, and use doors and wedges to buy time to retreat. Ship with a keyboard-and-mouse interface, one local save slot and a death-and-restart flow.
 
 ## User Stories
 

@@ -1,15 +1,18 @@
-import { advanceAttack, aimFrom, batConfig, beginAttack, selectBatTarget } from './combat.ts';
+import { advanceAttack, aimFrom, batConfig, beginAttack, selectMeleeTarget, shoveConfig } from './combat.ts';
 import type { AttackState } from './combat.ts';
 import { actorRadius, contains, createTraversal, hasLineOfSight, houses, initiallyClosed, openings, overlapsOpening, survivorSpawn, unproject } from './world.ts';
 import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
 import {
-  authoredStock, findDropPosition, inventoryQuickSlotCount, itemDefinitions, reachableContainers, reachableDrops, seedContainers,
+  authoredStock, baseCarryCapacity, carriedLoad, findDropPosition, inventoryQuickSlotCount, itemDefinitions,
+  reachableContainers, reachableDrops, seedContainers,
 } from './items.ts';
 import type { ConsumableStat, ContainerContents, ContainerStock, DroppedItem, ItemInstance } from './items.ts';
 import { createZombies, restoreZombies, zombieConfig } from './zombie.ts';
 import type { WorldSound, ZombieSpawn, ZombieState } from './zombie.ts';
 import { getSurvivalStep, neighborhoodDarkness } from './survival.ts';
+import { advanceDoorPressure, findClosedDoorApproach, openingCenter } from './shelter.ts';
+import type { DoorDefenses } from './shelter.ts';
 
 export type SurvivorId = 'survivor_male' | 'survivor_female';
 
@@ -30,7 +33,8 @@ export interface GameState {
     readonly thirst: number;
     readonly inventory: readonly (ItemInstance | null)[];
     readonly equippedWeaponId: string | null;
-    readonly gait: 'idle' | 'walk' | 'sprint';
+    readonly equippedPackId: string | null;
+    readonly gait: 'idle' | 'sneak' | 'walk' | 'sprint';
     readonly facingLeft: boolean;
     readonly facing: WorldPoint;
     readonly attack: AttackState | null;
@@ -41,27 +45,35 @@ export interface GameState {
   readonly droppedItems: readonly DroppedItem[];
   readonly occupiedHouseId: string | null;
   readonly closedOpeningIds: readonly string[];
+  readonly doorDefenses: DoorDefenses;
   readonly activeTimeMs: number;
   readonly gameOver: GameOverResult | null;
 }
 
 export interface GameSnapshot {
-  readonly survivor: Omit<GameState['survivor'], 'gait'>;
+  readonly survivor: Omit<GameState['survivor'], 'gait' | 'equippedPackId'> & { readonly equippedPackId?: string | null };
   readonly zombies: GameState['zombies'];
   readonly containers: ContainerContents;
   readonly droppedItems: GameState['droppedItems'];
   readonly activeTimeMs: number;
   readonly occupiedHouseId?: string | null;
   readonly closedOpeningIds?: readonly string[];
+  readonly doorDefenses?: DoorDefenses;
 }
 
 export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   getState(): GameState;
   subscribe(listener: () => void): () => void;
-  setMovement(screenDirection: WorldPoint, sprintHeld?: boolean): void;
+  setMovement(screenDirection: WorldPoint, sprintHeld?: boolean, sneakHeld?: boolean): void;
+  setReady(held: boolean): void;
+  isReady(): boolean;
+  isSneaking(): boolean;
+  canSee(position: WorldPoint): boolean;
+  canHear(position: WorldPoint, reach: number): number;
   aimAt(target: WorldPoint | null): void;
   step(deltaMs: number): GameState;
   startBatSwing(target: WorldPoint): boolean;
+  startShove(): boolean;
   getInteractionTarget(): InteractionTarget | null;
   interact(displayed: InteractionTarget): InteractionResult;
   getSearchTarget(): MapObject | null;
@@ -75,6 +87,7 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   toggleInventory(): void;
   closeInventoryPanel(): void;
   toggleEquip(slot: number, itemId: string): boolean;
+  togglePack(slot: number, itemId: string): 'equipped' | 'unequipped' | 'too_heavy' | 'unavailable';
   getItemUse(slot: number, itemId: string): ItemUse;
   useItem(slot: number, itemId: string): UseResult;
   dropItem(slot: number, itemId: string): DropResult;
@@ -82,28 +95,30 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
 
 export type InteractionTarget =
   | { kind: 'container'; id: string; position: WorldPoint; object: MapObject }
-  | { kind: 'opening'; id: string; position: WorldPoint; object: MapObject; closed: boolean }
+  | { kind: 'opening'; id: string; position: WorldPoint; object: MapObject; closed: boolean; wedged: boolean }
   | { kind: 'drop'; id: string; position: WorldPoint; item: ItemInstance };
 
 type InteractionResult =
   | { status: 'searched' }
   | { status: 'picked_up'; slot: number }
-  | { status: 'opening_changed' | 'opening_blocked' | 'inventory_full' | 'unavailable' };
+  | { status: 'opening_changed' | 'opening_blocked' | 'inventory_full' | 'too_heavy' | 'unavailable' };
 
 const interactionPriority = { drop: 0, container: 1, opening: 2 };
 
 type UseRejection = { status: 'no_benefit'; reason: string } | { status: 'unavailable' };
-type ItemUse = { status: 'eligible'; stat: ConsumableStat; value: number } | UseRejection;
-type UseResult = { status: 'used'; stat: ConsumableStat; value: number } | UseRejection;
+type ItemUse = { status: 'eligible'; stat: ConsumableStat; value: number } | { status: 'eligible'; door: MapObject } | UseRejection;
+type UseResult = { status: 'used'; stat: ConsumableStat; value: number } | { status: 'wedged' } | UseRejection;
 
-type DropResult = { status: 'dropped' | 'cannot_drop' | 'swing_in_progress' | 'unavailable' };
+type DropResult = { status: 'dropped' | 'cannot_drop' | 'swing_in_progress' | 'too_heavy' | 'unavailable' };
 
 type TransferResult =
   | { status: 'transferred'; slot: number }
-  | { status: 'inventory_full' | 'unavailable' };
+  | { status: 'inventory_full' | 'too_heavy' | 'unavailable' };
 
 const movementConfig = {
   walkSpeed: 2.55,
+  sneakSpeed: 1.38,
+  readySpeed: 1.86,
   sprintSpeed: 4.2,
   maxCollisionStep: 0.08,
   sprintDrainPerMs: 0.026,
@@ -167,11 +182,14 @@ function makeGameCoordinator({
   containerStock = authoredStock,
 }: FreshRunOptions, snapshot?: GameSnapshot): GameCoordinator {
   let closed = openings.filter(({ name }) => (snapshot?.closedOpeningIds ?? initiallyClosed).includes(name));
-  const traversal = createTraversal(() => closed);
+  const traversal = {
+    ...createTraversal(() => closed),
+    findClosedDoorApproach: (origin: WorldPoint, target: WorldPoint) => findClosedDoorApproach(closed, origin, target),
+  };
   if (!traversal.canOccupy(position)) throw new Error('The survivor must start on walkable ground');
   const zombies = snapshot ? restoreZombies(snapshot.zombies, snapshot.activeTimeMs, traversal) : createZombies(zombieSpawns, traversal);
   let state: GameState = {
-    survivor: snapshot ? { ...snapshot.survivor, gait: 'idle' } : {
+    survivor: snapshot ? { ...snapshot.survivor, equippedPackId: snapshot.survivor.equippedPackId ?? null, gait: 'idle' } : {
       characterId,
       position: { ...position },
       health: 100,
@@ -182,6 +200,7 @@ function makeGameCoordinator({
       thirst: 0,
       inventory: Array<ItemInstance | null>(12).fill(null),
       equippedWeaponId: null,
+      equippedPackId: null,
       gait: 'idle',
       facingLeft: false,
       facing: { x: 1, y: 0 },
@@ -193,11 +212,14 @@ function makeGameCoordinator({
     droppedItems: snapshot?.droppedItems ?? [],
     occupiedHouseId: getHouseAt(position, snapshot?.occupiedHouseId),
     closedOpeningIds: closed.map(({ name }) => name),
+    doorDefenses: snapshot?.doorDefenses ?? {},
     activeTimeMs: snapshot?.activeTimeMs ?? 0,
     gameOver: null,
   };
   let direction: WorldPoint = { x: 0, y: 0 };
   let shiftHeld = false;
+  let sneakHeld = false;
+  let ready = false;
   let sprintRequested = false;
   let pointerTarget: WorldPoint | null = null;
   let openContainer: MapObject | null = null;
@@ -211,6 +233,8 @@ function makeGameCoordinator({
   function clearMovement() {
     direction = { x: 0, y: 0 };
     shiftHeld = false;
+    sneakHeld = false;
+    ready = false;
     sprintRequested = false;
   }
 
@@ -235,6 +259,38 @@ function makeGameCoordinator({
     for (const zombie of zombies) zombie.hear(sound);
   }
 
+  function canSee(position: WorldPoint) {
+    const survivor = state.survivor;
+    const dx = position.x - survivor.position.x;
+    const dy = position.y - survivor.position.y;
+    const distance = Math.hypot(dx, dy);
+    const range = 11 - 4 * neighborhoodDarkness(state.activeTimeMs);
+    return distance <= range && (distance <= 1.75 || survivor.facing.x * dx + survivor.facing.y * dy >= distance * -.5)
+      && traversal.hasLineOfSight(survivor.position, position);
+  }
+
+  function canHear(position: WorldPoint, reach: number) {
+    const origin = state.survivor.position;
+    const distance = Math.hypot(position.x - origin.x, position.y - origin.y);
+    return distance >= reach ? 0 : (1 - distance / reach) * (traversal.hasLineOfSight(origin, position) ? 1 : .55);
+  }
+
+  function openingDistance(object: MapObject, origin: WorldPoint, center = openingCenter(object)) {
+    const dx = center.x - origin.x;
+    const dy = center.y - origin.y;
+    const [across, along] = object.height > object.width ? [dx, dy] : [dy, dx];
+    const approachReach = object.type === 'door' ? 1.65 : 1.08;
+    if (Math.hypot(across / approachReach, along / 1.08) > 1
+      || !hasLineOfSight(origin, center, closed.filter((opening) => opening !== object))) return Infinity;
+    return Math.hypot(dx, dy);
+  }
+
+  function canCarry(item: ItemInstance) {
+    const { inventory, equippedPackId } = state.survivor;
+    const { weight, capacity } = carriedLoad(inventory, equippedPackId);
+    return weight + itemDefinitions[item.kind].weight <= capacity + 1e-9;
+  }
+
   function interactionCandidates(): { target: InteractionTarget; distance: number }[] {
     if (pause.getPauseState().isPaused || state.gameOver) return [];
     return [
@@ -252,17 +308,14 @@ function makeGameCoordinator({
         distance,
       })),
       ...openings.flatMap((object) => {
-        const point = { x: object.x + object.width / 2, y: object.y + object.height / 2 };
-        const origin = state.survivor.position;
-        const dx = point.x - origin.x;
-        const dy = point.y - origin.y;
-        const alongY = object.height > object.width;
-        const [across, along] = alongY ? [dx, dy] : [dy, dx];
-        const approachReach = object.type === 'door' ? 1.65 : 1.08;
-        if (Math.hypot(across / approachReach, along / 1.08) > 1
-          || !hasLineOfSight(origin, point, closed.filter((opening) => opening !== object))) return [];
-        const target = { kind: 'opening' as const, id: object.name, position: point, object, closed: closed.includes(object) };
-        return [{ target, distance: Math.hypot(dx, dy) }];
+        const point = openingCenter(object);
+        const distance = openingDistance(object, state.survivor.position, point);
+        if (!Number.isFinite(distance)) return [];
+        const target = {
+          kind: 'opening' as const, id: object.name, position: point, object,
+          closed: closed.includes(object), wedged: state.doorDefenses[object.name]?.wedged ?? false,
+        };
+        return [{ target, distance }];
       }),
     ];
   }
@@ -295,14 +348,16 @@ function makeGameCoordinator({
           || state.zombies.some((actor) => actor.health > 0 && overlapsOpening(actor.position, target.object))
           || state.droppedItems.some(({ position }) => overlapsOpening(position, target.object, .17)))) return { status: 'opening_blocked' };
       closed = target.closed ? closed.filter((opening) => opening !== target.object) : [...closed, target.object];
+      const { [target.id]: _cleared, ...doorDefenses } = state.doorDefenses;
       emitSound({ position: target.position, reach: target.object.type === 'window' ? 4 : 3 });
-      state = { ...state, closedOpeningIds: closed.map(({ name }) => name), zombies: zombies.map((actor) => actor.getState()) };
+      state = { ...state, doorDefenses, closedOpeningIds: closed.map(({ name }) => name), zombies: zombies.map((actor) => actor.getState()) };
       notify();
       return { status: 'opening_changed' };
     }
 
     const slot = state.survivor.inventory.indexOf(null);
     if (slot < 0) return { status: 'inventory_full' };
+    if (!canCarry(target.item)) return { status: 'too_heavy' };
 
     const inventory = [...state.survivor.inventory];
     inventory[slot] = target.item;
@@ -341,10 +396,21 @@ function makeGameCoordinator({
   function getItemUse(slot: number, itemId: string): ItemUse {
     const { survivor } = state;
     const item = survivor.inventory[slot];
-    if (!isInventoryAvailable() || !item || item.id !== itemId || item.kind === 'baseball_bat') {
+    if (!isInventoryAvailable() || !item || item.id !== itemId) {
       return { status: 'unavailable' };
     }
-    const { stat, change, noBenefit } = itemDefinitions[item.kind].use;
+    if (item.kind === 'door_wedge') {
+      const door = closed.filter((object) => object.type === 'door' && state.occupiedHouseId
+        && object.name.startsWith(state.occupiedHouseId + '_'))
+        .map((object) => ({ object, distance: openingDistance(object, survivor.position) }))
+        .filter(({ distance }) => Number.isFinite(distance)).sort((a, b) => a.distance - b.distance)[0]?.object;
+      if (!door) return { status: 'no_benefit', reason: 'Stand inside beside a closed door.' };
+      if (state.doorDefenses[door.name]?.wedged) return { status: 'no_benefit', reason: 'This door is already wedged.' };
+      return { status: 'eligible', door };
+    }
+    const definition = itemDefinitions[item.kind];
+    if (!('use' in definition)) return { status: 'unavailable' };
+    const { stat, change, noBenefit } = definition.use;
     const value = Math.min(100, Math.max(0, survivor[stat] + change));
     if (value === survivor[stat]) return { status: 'no_benefit', reason: noBenefit };
     return { status: 'eligible', stat, value };
@@ -360,10 +426,12 @@ function makeGameCoordinator({
     });
     const { walkSpeed, sprintSpeed, sprintDrainPerMs, staminaRecoveryPerMs } = movementConfig;
     const timeToExhaustion = previous.stamina / sprintDrainPerMs;
-    const sprintMs = sprintRequested && !previous.attack ? Math.min(deltaMs, timeToExhaustion) : 0;
+    const timing = previous.attack?.kind === 'shove' ? shoveConfig : batConfig;
+    const sprintMs = sprintRequested && !previous.attack && !sneakHeld && !ready ? Math.min(deltaMs, timeToExhaustion) : 0;
     const sprintPosition = travel(previous.position, direction, sprintSpeed * sprintMs / 1000, canStep);
     const sprinting = sprintPosition !== previous.position;
-    const stepSpeed = previous.attack ? batConfig.stepSpeed : walkSpeed;
+    const stepSpeed = previous.attack ? timing.stepSpeed
+      : sneakHeld ? movementConfig.sneakSpeed : ready ? movementConfig.readySpeed : walkSpeed;
     const nextPosition = travel(sprintPosition, direction, stepSpeed * (deltaMs - sprintMs) / 1000, canStep);
 
     const exhausted = sprinting && sprintMs >= timeToExhaustion;
@@ -377,18 +445,20 @@ function makeGameCoordinator({
       ? aimFrom(nextPosition, pointerTarget)
       : aimFrom(previous.position, nextPosition)) ?? previous.facing;
     const activeTimeMs = state.activeTimeMs + deltaMs;
-    let attack = advanceAttack(previous.attack, deltaMs, batConfig);
+    let attack = advanceAttack(previous.attack, deltaMs, timing);
     const swingContact = attack?.phase === 'contact' && previous.attack?.phase === 'windup';
-    if (swingContact) emitSound({ position: nextPosition, reach: 6.8 });
+    if (swingContact) emitSound({ position: nextPosition, reach: attack?.kind === 'shove' ? 2.9 : 6.8 });
     else if (traveled > 0 && Math.floor(activeTimeMs / 420) !== Math.floor(state.activeTimeMs / 420)) {
-      emitSound({ position: nextPosition, reach: sprinting ? 8.5 : 1.7 });
+      emitSound({ position: nextPosition, reach: sprinting ? 8.5 : sneakHeld ? .65 : 1.7 });
     }
-    const sightRange = zombieConfig.detectionDistance - 2.1 * neighborhoodDarkness(activeTimeMs);
+    const sightRange = zombieConfig.detectionDistance - 2.1 * neighborhoodDarkness(activeTimeMs) - (sneakHeld ? 1.7 : 0);
     const approached = zombies.map((zombie) => zombie.step(nextPosition, deltaMs, activeTimeMs, sightRange));
     if (swingContact && attack) {
-      const target = selectBatTarget(nextPosition, attack.direction, approached, traversal.hasLineOfSight);
+      const target = selectMeleeTarget(nextPosition, attack.direction, approached, traversal.hasLineOfSight, timing);
       if (target) {
-        zombies.find((zombie) => zombie.getState() === target)!.receiveBatHit(nextPosition, activeTimeMs);
+        const zombie = zombies.find((zombie) => zombie.getState() === target)!;
+        if (attack.kind === 'shove') zombie.receiveShove(nextPosition);
+        else zombie.receiveBatHit(nextPosition, activeTimeMs);
         attack = { ...attack, damageApplied: true };
       }
     }
@@ -398,6 +468,13 @@ function makeGameCoordinator({
     }, 0);
     const health = Math.max(0, previous.health - needDamage - biteDamage);
     const gameOver = health === 0 ? { survivorId: previous.characterId, finalActiveTimeMs: activeTimeMs } : null;
+    const zombieStates = zombies.map((zombie) => zombie.getState());
+    const doors = advanceDoorPressure(closed, state.doorDefenses, zombieStates, deltaMs);
+    const openingsChanged = closed !== doors.closed;
+    if (openingsChanged) {
+      closed = [...doors.closed];
+      for (const zombie of zombies) zombie.rebuildNavigation(activeTimeMs);
+    }
     state = {
       ...state,
       survivor: {
@@ -406,7 +483,7 @@ function makeGameCoordinator({
         health,
         lastBiteAtMs: biteDamage > 0 ? activeTimeMs : previous.lastBiteAtMs,
         bleeding: previous.bleeding || biteDamage > 0,
-        gait: traveled === 0 || health === 0 ? 'idle' : sprinting && !exhausted ? 'sprint' : 'walk',
+        gait: traveled === 0 || health === 0 ? 'idle' : sprinting && !exhausted ? 'sprint' : sneakHeld ? 'sneak' : 'walk',
         facing,
         facingLeft: Math.abs(facing.x - facing.y) > 0.0001 ? facing.x < facing.y : previous.facingLeft,
         attack: health > 0 ? attack : null,
@@ -415,7 +492,9 @@ function makeGameCoordinator({
         hunger,
         thirst,
       },
-      zombies: zombies.map((zombie) => zombie.getState()),
+      zombies: zombieStates,
+      doorDefenses: doors.defenses,
+      closedOpeningIds: openingsChanged ? closed.map(({ name }) => name) : state.closedOpeningIds,
       occupiedHouseId: getHouseAt(nextPosition, state.occupiedHouseId),
       activeTimeMs,
       gameOver,
@@ -440,7 +519,7 @@ function makeGameCoordinator({
       advanceSimulation(survivalStep);
       remaining -= survivalStep.elapsedMs;
     }
-    pointerTarget = null;
+    if (!ready) pointerTarget = null;
     notify();
     return state;
   }
@@ -461,7 +540,7 @@ function makeGameCoordinator({
       listeners.add(listener);
       return () => { listeners.delete(listener); };
     },
-    setMovement(screenDirection, sprintHeld = false) {
+    setMovement(screenDirection, sprintHeld = false, crouchHeld = false) {
       if (pause.getPauseState().isPaused || state.gameOver) return;
       const input = unproject(screenDirection);
       const magnitude = Math.hypot(input.x, input.y);
@@ -471,7 +550,16 @@ function makeGameCoordinator({
       if (!sprintHeld) sprintRequested = false;
       if (sprintHeld && !shiftHeld) sprintRequested = state.survivor.stamina >= movementConfig.minimumSprintStamina;
       shiftHeld = sprintHeld;
+      sneakHeld = crouchHeld;
     },
+    setReady(held) {
+      if (!held && ready) pointerTarget = null;
+      ready = held && !pause.getPauseState().isPaused && !state.gameOver;
+    },
+    isReady: () => ready,
+    isSneaking: () => sneakHeld,
+    canSee,
+    canHear,
     aimAt(target) {
       if (pause.getPauseState().isPaused || state.gameOver || state.survivor.attack) return;
       if (target && (!Number.isFinite(target.x) || !Number.isFinite(target.y))) return;
@@ -485,7 +573,7 @@ function makeGameCoordinator({
 
       const facing = aimFrom(survivor.position, target)
         ?? (pointerTarget && aimFrom(survivor.position, pointerTarget)) ?? survivor.facing;
-      pointerTarget = null;
+      if (!ready) pointerTarget = null;
       state = {
         ...state,
         survivor: {
@@ -496,6 +584,20 @@ function makeGameCoordinator({
           attack: beginAttack(facing, batConfig),
         },
       };
+      notify();
+      return true;
+    },
+    startShove() {
+      const { survivor } = state;
+      if (pause.getPauseState().isPaused || state.gameOver || survivor.attack || survivor.stamina < shoveConfig.staminaCost) return false;
+      const facing = (pointerTarget && aimFrom(survivor.position, pointerTarget)) ?? survivor.facing;
+      if (!ready) pointerTarget = null;
+      state = { ...state, survivor: {
+        ...survivor, stamina: survivor.stamina - shoveConfig.staminaCost,
+        gait: survivor.gait === 'sprint' ? 'walk' : survivor.gait, facing,
+        facingLeft: Math.abs(facing.x - facing.y) > .0001 ? facing.x < facing.y : survivor.facingLeft,
+        attack: { ...beginAttack(facing, shoveConfig), kind: 'shove' },
+      } };
       notify();
       return true;
     },
@@ -520,6 +622,7 @@ function makeGameCoordinator({
       if (itemIndex < 0) return { status: 'unavailable' };
       const slot = state.survivor.inventory.indexOf(null);
       if (slot < 0) return { status: 'inventory_full' };
+      if (!canCarry(items[itemIndex]!)) return { status: 'too_heavy' };
 
       const inventory = [...state.survivor.inventory];
       inventory[slot] = items[itemIndex]!;
@@ -570,14 +673,33 @@ function makeGameCoordinator({
       changeEquippedWeapon(state.survivor.equippedWeaponId === itemId ? null : itemId);
       return true;
     },
+    togglePack(slot, itemId) {
+      const { survivor } = state;
+      const item = survivor.inventory[slot];
+      if (!isInventoryAvailable() || item?.kind !== 'backpack' || item.id !== itemId) return 'unavailable';
+      const equipped = survivor.equippedPackId === itemId;
+      if (equipped && carriedLoad(survivor.inventory, null).weight > baseCarryCapacity + 1e-9) return 'too_heavy';
+      state = { ...state, survivor: { ...survivor, equippedPackId: equipped ? null : itemId } };
+      notify();
+      return equipped ? 'unequipped' : 'equipped';
+    },
     getItemUse,
     useItem(slot, itemId) {
       const action = getItemUse(slot, itemId);
       if (action.status !== 'eligible') return action;
 
-      const { stat, value } = action;
       const inventory = [...state.survivor.inventory];
       inventory[slot] = null;
+      if ('door' in action) {
+        const id = action.door.name;
+        const doorDefenses = { ...state.doorDefenses, [id]: {
+          pressureMs: state.doorDefenses[id]?.pressureMs ?? 0, wedged: true,
+        } };
+        state = { ...state, doorDefenses, survivor: { ...state.survivor, inventory } };
+        notify();
+        return { status: 'wedged' };
+      }
+      const { stat, value } = action;
       state = { ...state, survivor: {
         ...state.survivor, [stat]: value, inventory, bleeding: stat === 'health' ? false : state.survivor.bleeding,
       } };
@@ -590,17 +712,21 @@ function makeGameCoordinator({
       if (!isInventoryAvailable() || !item || item.id !== itemId) return { status: 'unavailable' };
       if (survivor.attack && survivor.equippedWeaponId === itemId) return { status: 'swing_in_progress' };
 
+      const inventory = [...survivor.inventory];
+      inventory[slot] = null;
+      if (survivor.equippedPackId === itemId && carriedLoad(inventory, null).weight > baseCarryCapacity + 1e-9) {
+        return { status: 'too_heavy' };
+      }
       const position = findDropPosition(survivor.position, state.droppedItems, traversal.canOccupy, traversal.hasLineOfSight);
       if (!position) return { status: 'cannot_drop' };
 
-      const inventory = [...survivor.inventory];
-      inventory[slot] = null;
       state = {
         ...state,
         survivor: {
           ...survivor,
           inventory,
           equippedWeaponId: survivor.equippedWeaponId === itemId ? null : survivor.equippedWeaponId,
+          equippedPackId: survivor.equippedPackId === itemId ? null : survivor.equippedPackId,
         },
         droppedItems: [...state.droppedItems, { item, position }],
       };

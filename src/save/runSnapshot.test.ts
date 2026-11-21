@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator.ts';
 import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
-import { starterStock } from '../game/items.ts';
+import { expandedStock, seedContainers, starterStock } from '../game/items.ts';
 import { starterZombieSpawns, zombieSpawns } from '../game/world.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
@@ -37,8 +37,7 @@ test('schema-one runs migrate without replacing existing loot or encounters', ()
   const original = captureRun(createGameCoordinator());
   const { closedOpeningIds: _openings, survivor, ...snapshot } = original;
   const { bleeding: _bleeding, ...legacySurvivor } = survivor;
-  const containers = Object.fromEntries(Object.keys(starterStock).map((id) => [id, original.containers[id]]));
-  containers.starter_container = [];
+  const containers = { ...seedContainers(starterStock), starter_container: [] };
   const zombies = original.zombies.slice(0, starterZombieSpawns.length).map(({ navigationRetry: _retry, ...zombie }) => zombie);
   const raw = { ...saveRecord(1, null), schemaVersion: 1, worldVersion: 'neighborhood-1', run: {
     id: runId, snapshot: { ...snapshot, containers, survivor: legacySurvivor, zombies },
@@ -52,6 +51,50 @@ test('schema-one runs migrate without replacing existing loot or encounters', ()
   assert.equal(restored.survivor.bleeding, false);
   assert.equal(restored.zombies.length, zombieSpawns.length);
   assert.ok(restored.zombies.every((actor) => actor.navigationRetry === null));
+});
+
+test('schema-two migration adds shelter supplies without refilling a previously depleted item', () => {
+  const {
+    doorDefenses: _defenses, survivor: { equippedPackId: _pack, ...survivor }, ...snapshot
+  } = captureRun(createGameCoordinator());
+  const cabinet = 'house_b_living_cabinet';
+  const containers = { ...seedContainers(expandedStock), [cabinet]: [] };
+  const raw = { ...saveRecord(2, null), schemaVersion: 2, run: { id: runId, snapshot: { ...snapshot, survivor, containers } } };
+  const read = inspectSaveRecord(structuredClone(raw));
+  assert.equal(read.kind, 'ready');
+  assert.equal(read.run.snapshot.survivor.equippedPackId, null);
+  assert.deepEqual(read.run.snapshot.doorDefenses, {});
+  assert.deepEqual(read.run.snapshot.containers[cabinet]?.map(({ kind }) => kind), ['backpack', 'door_wedge']);
+});
+
+test('schema three preserves an equipped backpack, wedged door and unarmed shove through Continue', () => {
+  const base = captureRun(createGameCoordinator({ position: { x: 13.3, y: 8.28 } }));
+  const cabinet = 'house_b_living_cabinet';
+  const items = base.containers[cabinet]!;
+  const backpack = items.find(({ kind }) => kind === 'backpack')!;
+  const wedge = items.find(({ kind }) => kind === 'door_wedge')!;
+  const door = 'house_a_door';
+  const game = restoreGameCoordinator({
+    ...base, closedOpeningIds: [...base.closedOpeningIds!, door],
+    containers: { ...base.containers, [cabinet]: items.filter((item) => item !== backpack && item !== wedge) },
+    survivor: { ...base.survivor, inventory: [backpack, wedge, ...base.survivor.inventory.slice(2)] },
+  });
+  game.toggleInventory();
+  assert.equal(game.togglePack(0, backpack.id), 'equipped');
+  assert.equal(game.useItem(1, wedge.id).status, 'wedged');
+  game.closeInventoryPanel();
+  assert.equal(game.startShove(), true);
+  game.step(40);
+  const saved = captureRun(game);
+  const record = saveRecord(7, { id: runId, snapshot: saved });
+  const read = inspectSaveRecord(structuredClone(record));
+  assert.equal(read.kind, 'ready');
+  assert.deepEqual(read.run.snapshot, saved);
+  const continued = restoreGameCoordinator(read.run.snapshot);
+  assert.deepEqual(continued.step(60), game.step(60));
+
+  const invalid = { ...saved, doorDefenses: { ...saved.doorDefenses, unknown: { wedged: true, pressureMs: 0 } } };
+  assert.equal(inspectSaveRecord(saveRecord(7, { id: runId, snapshot: invalid })).kind, 'damaged');
 });
 
 test('committed saves keep closed entrances, active bleeding and the time left to investigate noise', () => {

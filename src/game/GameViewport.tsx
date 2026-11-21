@@ -4,7 +4,7 @@ import { HouseScene } from './HouseScene';
 import type { GameCoordinator, GameOverResult, InteractionTarget } from './gameCoordinator';
 import { itemDefinitions } from './items';
 
-const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight']);
+const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyC']);
 
 export function GameViewport({ coordinator, onDeathAnimationEnd }: {
   coordinator: GameCoordinator;
@@ -27,14 +27,17 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
     let promptInset = 0;
     const scene = new HouseScene(coordinator, (placement) => {
       const target = placement?.target ?? null;
-      const changed = target?.id !== displayed?.id || target?.kind !== displayed?.kind;
+      const changed = target?.id !== displayed?.id || target?.kind !== displayed?.kind
+        || (target?.kind === 'opening' && displayed?.kind === 'opening'
+          && (target.closed !== displayed.closed || target.wedged !== displayed.wedged));
       displayed = target;
       if (changed) feedback.textContent = '';
       prompt.hidden = target === null;
       if (!placement || !target) return;
       if (changed) {
         label.textContent = target.kind === 'container' ? 'Search' : target.kind === 'opening'
-          ? `${target.closed ? 'Open' : 'Close'} ${target.object.type}` : 'Pick up ' + itemDefinitions[target.item.kind].name;
+          ? `${target.closed ? 'Open' : 'Close'} ${target.object.type}${target.wedged ? ' (wedged)' : ''}`
+          : 'Pick up ' + itemDefinitions[target.item.kind].name;
         promptInset = prompt.offsetWidth / 2 + 4;
       }
       prompt.style.left = `clamp(${promptInset}px, ${placement.x}px, calc(100% - ${promptInset}px))`;
@@ -45,11 +48,12 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       coordinator.setMovement({
         x: Number(heldKeys.has('KeyD')) - Number(heldKeys.has('KeyA')),
         y: Number(heldKeys.has('KeyS')) - Number(heldKeys.has('KeyW')),
-      }, heldKeys.has('ShiftLeft') || heldKeys.has('ShiftRight'));
+      }, heldKeys.has('ShiftLeft') || heldKeys.has('ShiftRight'), heldKeys.has('KeyC'));
     }
 
     function clearMovement() {
       heldKeys.clear();
+      coordinator.setReady(false);
       updateMovement();
     }
 
@@ -57,6 +61,11 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       if (event.repeat || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey
         || event.target instanceof HTMLButtonElement || coordinator.getPauseState().isPaused
         || coordinator.getState().gameOver) return;
+      if (event.code === 'Space') {
+        coordinator.startShove();
+        event.preventDefault();
+        return;
+      }
       if (event.code === 'KeyE' && displayed) {
         const result = coordinator.interact(displayed);
         if (result.status === 'opening_blocked') {
@@ -64,6 +73,8 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
             ? 'Doorway blocked' : 'Window blocked';
         } else if (result.status === 'inventory_full') {
           feedback.textContent = 'Inventory full';
+        } else if (result.status === 'too_heavy') {
+          feedback.textContent = 'Too heavy to carry';
         } else {
           displayed = null;
           prompt.hidden = true;
