@@ -58,7 +58,7 @@ The production build is written to `dist/`. The tests cover gameplay simulation 
 
 ## GitHub Actions and Vercel
 
-The CI and Vercel workflow runs `npm ci`, tests, and the production build for pushes and pull requests. A successful `main` build publishes the compiled static files to the existing `dead-county` Vercel project. Add a project-scoped Vercel credential as the `VERCEL_TOKEN` secret in the GitHub `production` environment. `VERCEL_SCOPE` selects the project’s Vercel team.
+The CI and Vercel workflow runs `npm ci`, tests, and the production build for pushes and pull requests. A successful `main` build publishes the compiled static files to the existing `dead-county` Vercel project. In Vercel **Account Settings → Tokens**, create an access token for the team that owns the project. Store it as `VERCEL_TOKEN` under **Settings → Environments → production → Secrets** on GitHub. The workflow targets the project using its Vercel team and project IDs and checks that the token can access that project before uploading. If the check returns 401, 403, or 404, replace the GitHub secret with a current token for that team.
 
 ## Project docs
 

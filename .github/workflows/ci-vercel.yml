@@ -60,14 +60,22 @@ jobs:
       - name: Deploy the tested site
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_SCOPE: ${{ vars.VERCEL_SCOPE }}
+          VERCEL_ORG_ID: team_4roCsIjHF60o12fLEdQc0uHZ
+          VERCEL_PROJECT_ID: prj_kaDWNA1groZ1r3cvjQNcq7jwYgFL
+          VERCEL_TELEMETRY_DISABLED: '1'
         shell: bash
         run: |
           if [[ -z "$VERCEL_TOKEN" ]]; then
             echo '::error::Configure the VERCEL_TOKEN secret for production deployment.'
             exit 1
           fi
-          options=()
-          if [[ -n "$VERCEL_SCOPE" ]]; then options+=(--scope "$VERCEL_SCOPE"); fi
+          status=$(printf 'Authorization: Bearer %s\n' "$VERCEL_TOKEN" | \
+            curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' --header @- \
+            "https://api.vercel.com/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_ORG_ID")
+          if [[ "$status" != 200 ]]; then
+            echo "::error::Vercel project lookup returned HTTP $status. Verify that the production VERCEL_TOKEN is current and grants access to the dead-county project."
+            exit 1
+          fi
+
           "$RUNNER_TEMP/vercel-cli/node_modules/.bin/vercel" deploy "$RUNNER_TEMP/dead-county" \
-            --prod --yes --project dead-county --verify --no-color --token "$VERCEL_TOKEN" "${options[@]}"
+            --prod --yes --verify --no-color
