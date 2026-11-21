@@ -17,9 +17,13 @@ Open the local address printed by Vite. Use a desktop browser with a keyboard an
 
 ## Your first run
 
-Both survivors start unarmed in House A. Search the starter cabinet for a Baseball Bat and Water Bottle. Transfer the bat to Inventory, then choose **Equip** to use it.
+Both survivors start unarmed in House A. Search the starter cabinet for a Baseball Bat and Water Bottle. Transfer the bat, then click it in the gameplay strip to equip it or choose **Equip** in Inventory. Click a consumable in the strip to open its details and choose whether to use it.
+
+Drag loot into Inventory to fill the first open slot, or choose **Transfer**. Drag carried items between slots to move or swap them, or choose **Move** and select a destination. Drag an item onto **Drop** to place it on the ground.
 
 House B has gray siding, a columned porch, and Canned Food in its kitchen cabinet. The street crossing is quicker, while the detour offers cover that can break line of sight. House C has food and water and draws more zombie activity. Hunger and Thirst rise during active play. Bandages restore lost Health, and a run ends when Health reaches zero.
+
+Follow the avenue east into six connected blocks. The Corner Store, Birch Clinic and Cedar Workshop have different supplies. Sprinting and swinging can draw nearby zombies toward the sound. Use **E** at an indicated door or window to open or close it. Bandages stop bleeding after a bite. The game clock advances during play, so the neighborhood gets darker as night approaches.
 
 ## Controls
 
@@ -29,7 +33,7 @@ House B has gray siding, a columned porch, and Canned Food in its kitchen cabine
 | `Shift` + movement | Sprint while Stamina permits |
 | Mouse movement | Face toward the pointer over the game world |
 | Left click | Swing the equipped bat in the pointed direction |
-| `E` | Search the indicated container or pick up the indicated item |
+| `E` | Search, pick up an item, or open or close an indicated passage |
 | `I` | Toggle Inventory |
 | `M` or click the minimap | Open the neighborhood map |
 | `Esc` | Close the current panel or open Pause |
@@ -51,6 +55,10 @@ npm run preview
 ```
 
 The production build is written to `dist/`. The tests cover gameplay simulation and the rules behind the visible controls.
+
+## GitHub Actions and Vercel
+
+The CI and Vercel workflow runs `npm ci`, tests, and the production build for pushes and pull requests. A successful `main` build publishes the compiled static files to the existing `dead-county` Vercel project. Add a project-scoped Vercel credential as the `VERCEL_TOKEN` secret in the GitHub `production` environment. `VERCEL_SCOPE` selects the project’s Vercel team.
 
 ## Project docs
 

@@ -95,9 +95,9 @@
   padding: .48rem 1.1rem .39rem;
   place-items: center;
   border: 1px solid var(--menu-border);
-  border-radius: 4px;
-  background: linear-gradient(160deg, rgb(52 58 51 / 48%), transparent 65%), var(--menu-surface);
-  box-shadow: inset 0 0 0 1px rgb(238 230 214 / 6%), 0 4px 12px rgb(0 0 0 / 30%);
+  border-radius: var(--dc-frame-radius);
+  background: var(--dc-frame);
+  box-shadow: var(--dc-frame-shadow);
   color: var(--menu-text);
   font: 400 clamp(1.25rem, 2vw, 1.65rem)/1 var(--menu-display);
   letter-spacing: .045em;

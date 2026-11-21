@@ -21,12 +21,12 @@ The approved design shows a compact, weathered **Loot Container** panel on the l
 - Exactly **four** item kinds: Baseball Bat, Canned Food, Water Bottle, Bandage.
 - **12 inventory positions**, laid out **4 columns × 3 rows**, one item instance per position.
 - A compact loot panel reflecting the selected container's **remaining individual item instances**.
-- Select an item in the container, inspect its type/description and **Transfer** one item to the next free inventory slot.
+- Drag a container item onto Inventory, or select it, inspect its details and activate **Transfer**. Both actions move one item to the next free inventory slot.
 - Accurate `Inventory full` feedback; container depletion persists in the existing local save.
 
 ### Not included
 
-- `E Take` or `R Take All` shortcuts, automatic bulk transfers, drag-and-drop, stack counts, weight/encumbrance, ammo, guns, axes, medkits as separate items, durability, item trading, arbitrary house-door searching, outdoor mailbox/vehicle looting, randomized global loot tables, live day/night clock, enemy map pins, or additional storage capacity.
+- `E Take` or `R Take All` shortcuts, automatic bulk transfers, stack counts, weight/encumbrance, ammo, guns, axes, medkits as separate items, durability, item trading, arbitrary house-door searching, outdoor mailbox/vehicle looting, randomized global loot tables, live day/night clock, enemy map pins, or additional storage capacity.
 - Reverse transfer (moving inventory items **back into** a searched cabinet) is **not required** by the current PRD. The concept's left-pointing arrow is illustrative, not an authorization to implement container storage/deposit mechanics.
 
 ---
@@ -37,7 +37,7 @@ The approved design shows a compact, weathered **Loot Container** panel on the l
 2. The player approaches a mapped indoor Cabinet, Drawer, or Supply Box. When that container wins the shared interaction selection, show **`E Search`** anchored above it.
 3. Pressing `E` while that container is the active valid target opens the combined **Loot / Inventory** overlay. The panel header displays the container type (optionally a short grounded description, e.g. `Kitchen Cabinet`).
 4. The player selects an available item from the loot list/grid. A nearby detail area displays that item's name, type, brief description and real gameplay effect. Selecting an item **does not** take or use it.
-5. The player activates **Transfer**. On success, **exactly one item instance** leaves the source container and appears in **exactly one vacant** position in the 12-slot inventory. The HUD's optional passive preview reflects the updated canonical inventory state.
+5. The player drags an item onto Inventory or activates **Transfer**. The first available slot is indicated during a drag. On success, exactly one instance leaves the container and appears in that vacant slot. The HUD strip reflects the updated inventory.
    Briefly highlight the receiving slot in the open Loot panel after the transfer succeeds.
 6. If the inventory is full, **nothing moves** and the user sees `Inventory full`. Selection and remaining loot stay intact.
 7. Esc or Close dismisses Loot and clears its pause reason. On return to gameplay, recompute the interaction prompt from the current world state.
@@ -116,7 +116,7 @@ The 3-column **loot-side** example is purely a presentation grid; it is **not** 
 
 Opening Loot freezes world movement, attacks, survival and elapsed time. Closing clears only the Loot reason. After returning from a hidden tab, the player must also choose Resume. One Escape event dismisses only the foreground panel.
 
-The top-right minimap can remain visible as part of the dimmed underlying HUD but is not interactive while Loot is active. **No zombie markers**. The timer displays **elapsed survival time**, never a wall-clock time or Day 1 clock. Bottom HUD 10-cell preview remains passive and mirrors items from the true 12-slot inventory; it provides **no extra inventory capacity** or `1`–`0` shortcut bindings.
+The top-right minimap and bottom quick slots can remain visible in the dimmed HUD. Loot blocks both controls. The map omits zombie markers and the timer displays **elapsed survival time**.
 
 ---
 

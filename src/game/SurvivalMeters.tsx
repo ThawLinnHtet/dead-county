@@ -6,6 +6,7 @@ import './survivalMeters.css';
 
 export function SurvivalMeters({ coordinator }: { coordinator: GameCoordinator }) {
   const characterId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.characterId);
+  const bleeding = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.bleeding);
   const female = characterId === 'survivor_female';
   return (
     <section className="survival-meters" aria-label="Survival stats">
@@ -16,6 +17,7 @@ export function SurvivalMeters({ coordinator }: { coordinator: GameCoordinator }
       />
       <div className="survival-meter-list">
         <SurvivalMeter coordinator={coordinator} stat="health" />
+        {bleeding && <span className="survival-need-warning" data-level="critical" role="status">Bleeding · Use a bandage</span>}
         <SurvivalMeter coordinator={coordinator} stat="stamina" />
         <SurvivalMeter coordinator={coordinator} stat="hunger" />
         <SurvivalMeter coordinator={coordinator} stat="thirst" />

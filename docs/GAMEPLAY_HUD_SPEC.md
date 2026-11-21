@@ -15,9 +15,9 @@ The preferred visual direction is the **user-selected, cinematic isometric neigh
 
 The user explicitly confirmed that **`E Search` appears only when the survivor is near a lootable container**. It must **not** appear merely because the survivor is near a doorway or a whole house. Open entrances are traversed by walking through them; no door interaction key is needed.
 
-**Priority rule:** Screenshots communicate visual arrangement and mood, not new gameplay systems. Where image text or props conflict with the current master PRD, implement the requirements below rather than copying the misleading image literally. In particular, remove door-level `E Search`, day/night clock, zombie markers, medical kits, item-count badges, weapon durability, and any unapproved new mechanics.
+**Priority rule:** Screenshots communicate arrangement and mood. The master PRD governs mechanics. Elapsed Survival Time remains distinct from the approved in-game day and time. Doors and windows use Open or Close prompts. Search prompts identify reachable containers.
 
-The reference's **bottom 10-cell bar is a preferred visual composition**, *not yet approval of a separate 10-slot inventory or fully functional `1`–`0` hotkeys*. See §5 for a non-expanding MVP implementation that retains the look while keeping the canonical 12-slot inventory. If a functional hotbar is later authorized, amend the master PRD before implementing the new controls.
+The **bottom 10-cell bar** mirrors the canonical inventory and provides click access to carried items under FR-I17. See §5 for its interactions.
 
 ---
 
@@ -30,7 +30,7 @@ The reference's **bottom 10-cell bar is a preferred visual composition**, *not y
 | **Upper-left** | Selected survivor portrait, Health, Stamina, Hunger, Thirst | Compact dark translucent/matte panel; 4 labeled bars, icons, and `value / 100` numbers |
 | **Upper-right, beside minimap** | **Elapsed survival duration** | Small time panel, e.g. `Survived 00:42:17`; count active gameplay time only, **not** a world clock |
 | **Upper-right** | Circular minimap | Approx. 150px diameter as an initial design baseline, dark outer ring, `N` label, roads/houses/player arrow |
-| **Bottom-center** | Equipped bat / item-strip visual | Restrained 10-cell row from the approved reference; see §5 for MVP scope limits |
+| **Bottom-center** | Equipped bat / quick inventory | Restrained 10-cell row with clickable occupied slots. See §5. |
 | **Lower-right** | Compact optional static controls legend | `I Inventory`, `M Map`, `Esc Pause`; no interactive clicks required for passive legend |
 | **Near a valid in-world target** | `E Search` or `E Pick up <item name>` | One prompt anchored to the selected container or dropped item (see §4) |
 
@@ -125,16 +125,13 @@ The preferred concept image depicts `E Search` near a front entrance. **That pla
 
 The user specifically preferred the reference with a **bottom-centered horizontal cell strip**, compared with the alternate mockup that moved only a baseball-bat panel to the bottom-left. Preserve that **composition** as a visual direction.
 
-**MVP-safe interpretation:**
-
-- Render a compact **10-cell, non-expanding visual inventory preview** mirroring up to 10 existing inventory slots/items; **do not create 10 new storage slots** or an independent inventory state. Existing inventory remains **12 slots**, accessible via `I`.
+- Render a compact **10-cell quick inventory** mirroring the first 10 positions. The full **12-slot** inventory opens with `I` or the strip’s **Inventory** control.
 - Clearly highlight the currently **equipped Baseball Bat** in its mirrored position; if unequipped show a coherent unarmed state. One baseball-bat weapon type only.
 - Use only the four canonical item icons. The red-cross *medkit* illustrated in the concept should be represented as the approved **Bandage**, not a new item category.
 - Do not copy image quantity badges (`×2`, etc.): all MVP items are **unstacked**, one item per occupied slot.
-- **Do not silently implement `1`–`0` hotkeys**, independent slot assignments, item swapping, extra capacity, item durability or a new item-use flow based solely on the picture. Item use/equip/drop remains available in the existing 12-slot Inventory panel. The drawn row may use simple empty/occupied cells; omit misleading numbered labels until hotkey functionality is explicitly scoped.
-- HUD mouse clicks on the strip (if interactive in a future revision) may not pass through and hit zombies; for the current MVP preview, present it as passive UI.
-
-**Future decision, not in this spec:** To make a genuine `1`–`0` hotbar with shortcut assignment, item use and equipment actions, update `PRD.md`, `DESIGN_SYSTEM.md`, and input/save tests first. That is a functional scope change distinct from accepting the visual composition.
+- Click or keyboard-activate an occupied bat slot to equip that instance. Repeating the action leaves that bat equipped. An active swing or recovery locks weapon changes.
+- Activating a consumable opens Inventory on that item. **Use** applies the existing eligibility and consumption rules. Empty slots have no action. Arrange slots in the full Inventory grid.
+- Quick slots have no `1`–`0` bindings or extra capacity. The strip owns its clicks so they cannot trigger world attacks.
 
 ---
 
@@ -251,7 +248,7 @@ type HudView = {
 2. **Map integration:** cached circular minimap and keyboard/click-open full map with correct input isolation.
 3. **World interaction projection:** define mapped container IDs, eligibility queries, one target selection, and contextual prompt anchor.
 4. **Loot-panel bridge:** `E` opens correct panel, transfer and persistence honor 12 slots and no stacking.
-5. **Equipped-item/item-strip rendering:** mirror existing inventory/equipped state only; do not grow item systems.
+5. **Equipped-item/quick inventory:** mirror existing slots and equipment. Verify direct equip, focused consumable details, and click isolation from gameplay.
 6. **Combat/overlay safety + QA:** left-click world-only attacks, pause/focus handling, 20-zombie performance baseline and acceptance checklist.
 
 ### Deferred questions (not blockers for MVP)

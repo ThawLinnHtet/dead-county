@@ -1,19 +1,12 @@
 .inventory-dialog {
-  --panel: var(--dc-surface);
-  --slot: #141716;
-  --edge: #626357;
-  --cream: var(--dc-text);
-  --muted: var(--dc-text-muted);
-  --focus: var(--dc-focus);
-  --accent: var(--dc-accent);
   max-width: calc(100vw - 2rem);
   max-height: calc(100svh - 2rem);
   margin: auto;
-  padding: 12px;
+  padding: 4px;
   border: 0;
   background: transparent;
-  color: var(--cream);
-  font: 400 .875rem/1.45 Inter, Arial, sans-serif;
+  color: var(--dc-text);
+  font: 400 .875rem/1.45 var(--dc-font-body);
 }
 
 .inventory-dialog::backdrop {
@@ -21,44 +14,59 @@
 }
 
 .inventory-shell {
-  position: relative;
   display: grid;
-  grid-template-columns: auto minmax(190px, 240px);
-  align-items: start;
-  gap: 12px;
+  grid-template-columns: minmax(235px, 292px) minmax(215px, 250px);
+  overflow: hidden;
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-frame-radius);
+  background: var(--dc-frame);
+  box-shadow: var(--dc-frame-shadow);
 }
 
 .inventory-dialog--loot .inventory-shell {
-  grid-template-columns: minmax(166px, 1fr) auto auto minmax(190px, 240px);
+  grid-template-columns: minmax(140px, 170px) minmax(235px, 292px) minmax(215px, 250px);
+}
+
+.inventory-header {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: space-between;
   align-items: center;
+  gap: 1rem;
+  padding: .5rem .75rem .5rem 1rem;
+  border-bottom: 1px solid var(--dc-border);
+}
+
+.inventory-header h2 {
+  margin: 0;
+  font: 400 2.25rem/1 var(--dc-font-display);
+  letter-spacing: .05em;
 }
 
 .inventory-panel {
   min-width: 0;
-  padding: 16px;
-  border: 1px solid var(--edge);
-  border-radius: 4px;
-  background: linear-gradient(150deg, #262821, var(--panel) 40%, #181a18);
-  box-shadow: inset 0 0 0 2px rgb(228 206 170 / 5%), 0 8px 28px rgb(0 0 0 / 44%);
+  padding: 1rem;
 }
 
-.inventory-panel h2 {
-  padding-bottom: .35rem;
-  margin: 0 0 .75rem;
-  border-bottom: 1px solid var(--edge);
-  font: 400 1.75rem/1.1 "Bebas Neue", Impact, sans-serif;
-  letter-spacing: .04em;
+.inventory-panel + .inventory-panel {
+  border-inline-start: 1px solid var(--dc-border);
+}
+
+.inventory-panel h3 {
+  margin: 0 0 .6rem;
+  font: 400 1.45rem/1 var(--dc-font-display);
+  letter-spacing: .045em;
 }
 
 .inventory-slots {
   display: grid;
-  grid-template-columns: repeat(4, clamp(49px, 5vw, 65px));
-  gap: 5px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 4px;
 }
 
 .loot-slots {
-  grid-template-columns: repeat(2, clamp(49px, 5vw, 65px));
-  max-height: 255px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-height: 15rem;
   overflow: auto;
 }
 
@@ -68,23 +76,47 @@
   place-items: center;
   aspect-ratio: 1;
   min-height: 44px;
-  border: 1px solid var(--edge);
-  border-radius: 3px;
-  background: var(--slot);
-  box-shadow: inset 0 1px 4px rgb(0 0 0 / 42%);
+  border: 1px solid var(--dc-border);
+  border-radius: 2px;
+  background: var(--dc-slot);
+  box-shadow: inset 0 1px 3px rgb(0 0 0 / 45%);
+  user-select: none;
 }
 
-.inventory-slot:disabled {
-  opacity: .6;
+.inventory-slot .item-icon { pointer-events: none; }
+
+.inventory-slot-preview {
+  display: grid;
+  width: 100%;
+  place-items: center;
+  opacity: .65;
+  pointer-events: none;
 }
 
-.inventory-slot:enabled:hover {
-  background: var(--dc-surface-elevated);
+.inventory-slot[draggable="true"] { cursor: grab; }
+.inventory-slot[data-dragging="true"] { opacity: .45; }
+.inventory-slot[aria-disabled="false"]:hover { background: var(--dc-surface-elevated); }
+
+.inventory-slot[aria-pressed="true"],
+.inventory-slot[data-equipped="true"] {
+  border-color: var(--dc-focus);
 }
 
-.inventory-slot[aria-pressed="true"] {
-  border-color: var(--focus);
-  box-shadow: inset 0 0 0 1px var(--focus);
+.inventory-slot[data-equipped="true"] {
+  box-shadow: inset 0 -2px 0 var(--dc-focus);
+}
+
+.inventory-slot[data-loot-receiver="true"],
+.inventory-slot[data-move-target="true"] {
+  border-style: dashed;
+  border-color: var(--dc-focus);
+}
+
+.inventory-slot[data-drop-target="true"],
+.inventory-slot[data-move-target="true"]:hover {
+  border-style: solid;
+  border-color: var(--dc-focus);
+  background: var(--dc-accent-pressed);
 }
 
 .equipment-mark {
@@ -94,14 +126,15 @@
   padding: 0 3px;
   border-radius: 2px;
   background: #444b2d;
-  color: var(--focus);
+  color: var(--dc-focus);
   font-weight: 700;
+  pointer-events: none;
 }
 
 .received-item {
   position: absolute;
   inset: 0;
-  border: 2px solid var(--focus);
+  border: 2px solid var(--dc-focus);
   box-shadow: inset 0 0 11px rgb(214 174 109 / 55%);
   border-radius: inherit;
   pointer-events: none;
@@ -120,32 +153,36 @@
 .inventory-close,
 .inventory-action {
   min-height: 44px;
-  border: 1px solid var(--edge);
-  border-radius: 3px;
-  padding: .42rem .72rem;
-  background: var(--slot);
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-frame-radius);
+  padding: .35rem .65rem;
+  background: var(--dc-frame);
+  color: var(--dc-text);
+  font: 400 1.15rem/1 var(--dc-font-display);
+  letter-spacing: .045em;
   cursor: pointer;
 }
 
 .inventory-close {
-  position: absolute;
-  z-index: 1;
-  top: 4px;
-  right: 4px;
   width: 44px;
   padding: 0;
-  font-size: 1.5rem;
-  line-height: 1;
+  font: 500 1.5rem/1 var(--dc-font-body);
 }
 
 .inventory-close:hover,
 .inventory-action:enabled:hover {
-  border-color: var(--focus);
-  background: var(--accent);
+  border-color: var(--dc-focus);
+  background-color: var(--dc-surface-elevated);
+}
+
+.inventory-action--primary:enabled {
+  border-color: var(--dc-accent-hover);
+  background-color: var(--dc-accent-pressed);
 }
 
 .inventory-action:disabled {
-  color: var(--muted);
+  background: var(--dc-slot);
+  color: var(--dc-text-muted);
   cursor: default;
 }
 
@@ -159,55 +196,44 @@
   border-color: var(--dc-danger);
 }
 
-.inventory-action--drop:enabled:hover {
-  border-color: var(--focus);
+.inventory-action--drop:enabled:hover,
+.inventory-action--drop[data-drop-target="true"] {
+  border-color: var(--dc-focus);
   background: var(--dc-danger-filled);
 }
 
-.inventory-item-feedback {
-  color: var(--focus);
-}
+.inventory-item-feedback { color: var(--dc-focus); }
 
 .item-details > .inventory-item-feedback:empty {
   margin: 0;
 }
 
 .inventory-dialog button:focus-visible {
-  outline: 2px solid var(--focus);
+  outline: 2px solid var(--dc-focus);
   outline-offset: 2px;
 }
 
 .loot-transfer {
   display: grid;
-  justify-items: center;
-  align-self: center;
-  gap: 6px;
+  gap: .4rem;
+  margin-top: .75rem;
 }
 
-.inventory-feedback {
-  min-height: 1.5em;
-  max-width: 6rem;
+.inventory-feedback,
+.inventory-hint {
   margin: 0;
-  color: var(--focus);
-  text-align: center;
+  color: var(--dc-text-muted);
+  font-size: .75rem;
 }
 
-.item-details {
-  min-height: 160px;
-  padding-top: 26px;
-}
-
-.item-details > h2,
-.item-detail-heading {
-  margin-right: 28px;
-}
+.inventory-hint { margin-top: .65rem; }
 
 .item-detail-heading {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--edge);
+  padding-bottom: .55rem;
+  border-bottom: 1px solid var(--dc-border);
 }
 
 .item-detail-heading .item-icon {
@@ -215,16 +241,11 @@
   width: 34px;
 }
 
-.item-detail-heading h2 {
-  padding: 0;
-  margin: 0;
-  border: 0;
-  font-size: 1.5rem;
-}
+.item-detail-heading h3 { margin: 0; }
 
 .item-detail-heading p,
 .inventory-muted {
-  color: var(--muted);
+  color: var(--dc-text-muted);
 }
 
 .item-detail-heading p { margin: 0; }
@@ -246,7 +267,7 @@
 
 .world-pickup-feedback {
   position: absolute;
-  bottom: 1.5rem;
+  bottom: calc(var(--game-hud-bottom) + 5.1rem);
   left: 50%;
   z-index: 2;
   margin: 0;
@@ -281,13 +302,23 @@
   font-weight: 700;
 }
 
-@media (max-width: 870px) {
+@media (max-width: 44rem) {
   .inventory-dialog--loot .inventory-shell {
-    grid-template-columns: auto auto auto;
+    grid-template-columns: minmax(122px, 160px) minmax(206px, 280px);
   }
   .inventory-dialog--loot .item-details {
     grid-column: 1 / -1;
-    min-height: auto;
+    border-inline-start: 0;
+    border-top: 1px solid var(--dc-border);
   }
-  .inventory-dialog--loot .inventory-shell { padding-top: 51px; }
+}
+
+@media (max-width: 32rem) {
+  .inventory-shell,
+  .inventory-dialog--loot .inventory-shell { grid-template-columns: minmax(0, 22rem); }
+  .inventory-panel + .inventory-panel {
+    border-inline-start: 0;
+    border-top: 1px solid var(--dc-border);
+  }
+  .loot-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

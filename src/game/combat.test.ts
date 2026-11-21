@@ -4,6 +4,7 @@ import { createGameCoordinator } from './gameCoordinator.ts';
 import type { GameCoordinator } from './gameCoordinator.ts';
 import type { WorldPoint } from './world.ts';
 import type { ZombieSpawn } from './zombie.ts';
+import { bleedingDamagePerMs } from './survival.ts';
 
 const survivorPosition = { x: 11.9, y: 9.15 };
 const cabinet = 'starter_container';
@@ -97,7 +98,7 @@ test('two simultaneous bites reach contact once each and a nonlethal bite preser
   assert.equal(survivor.attack?.phase, 'windup');
   assert.ok(zombies.every(({ attack }) => attack?.phase === 'contact' && attack.damageApplied));
   game.step(75);
-  assert.equal(game.getState().survivor.health, 56);
+  assert.ok(Math.abs(game.getState().survivor.health - (56 - 75 * bleedingDamagePerMs)) < 1e-8);
   assert.equal(game.getState().survivor.attack?.damageApplied, true);
 });
 
@@ -235,8 +236,9 @@ test('a killed zombie and a dead survivor cannot complete or start further attac
   assert.equal(corpse.attack, null);
   assert.equal(corpse.moving, false);
   const afterDeath = fighter.getState().survivor.health;
+  assert.equal(fighter.getState().survivor.bleeding, true);
   assert.strictEqual(fighter.step(1500).zombies[0], corpse);
-  assert.equal(fighter.getState().survivor.health, afterDeath);
+  assert.ok(Math.abs(fighter.getState().survivor.health - (afterDeath - 1500 * bleedingDamagePerMs)) < 1e-8);
 
   const bitten = createGameCoordinator({
     position: survivorPosition,

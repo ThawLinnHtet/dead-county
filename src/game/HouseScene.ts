@@ -9,15 +9,17 @@ import { drawBat, drawBiteArms, drawDamageCue } from './combatArt';
 import femaleSurvivorUrl from './survivor-female.png';
 import { drawFurniture } from './drawFurniture';
 import { drawHouse } from './drawHouse';
-import { drawScenery } from './drawScenery';
+import { drawScenery, drawTerrainDetail } from './drawScenery';
 import type { GameCoordinator, GameOverResult, GameState, InteractionTarget } from './gameCoordinator';
 import { itemDefinitions } from './items';
+import { isArtInView } from './isometricDrawing';
 import groundUrl from './maps/ground.png';
-import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, unproject } from './world';
+import { contains, groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, unproject } from './world';
 import zombieVariantsUrl from './zombie-variants.png';
 import { zombieConfig } from './zombie';
 
 const outsideTerrainTiles = 7;
+const groundChunkSize = 8;
 const survivorDeathAnimationMs = 210;
 type InteractionPromptPosition = { target: InteractionTarget; x: number; y: number };
 
@@ -26,6 +28,7 @@ export class HouseScene extends Phaser.Scene {
   private readonly showInteractionPrompt: (prompt: InteractionPromptPosition | null) => void;
   private readonly finishDeathAnimation: (result: GameOverResult) => void;
   private readonly droppedItemArt = new Map<string, Phaser.GameObjects.Image>();
+  private groundChunks: { art: Phaser.GameObjects.Container; left: number; right: number; top: number; bottom: number }[] = [];
   private readonly combatAudio = createCombatAudio();
   private readonly zombieArt = new Map<string, {
     sprite: Phaser.GameObjects.Sprite;
@@ -38,6 +41,7 @@ export class HouseScene extends Phaser.Scene {
   private shadow!: Phaser.GameObjects.Ellipse;
   private survivorEffects!: Phaser.GameObjects.Graphics;
   private building!: ReturnType<typeof drawHouse>;
+  private displayedOpenings?: GameState['closedOpeningIds'];
   private lastFrameAt: number | undefined;
   private timeSinceSurvivorDeath = 0;
 
@@ -65,15 +69,9 @@ export class HouseScene extends Phaser.Scene {
 
   create() {
     this.lastFrameAt = undefined;
+    this.displayedOpenings = undefined;
     this.timeSinceSurvivorDeath = 0;
-    for (let y = -outsideTerrainTiles; y < mapHeight + outsideTerrainTiles; y += 1) {
-      for (let x = -outsideTerrainTiles; x < mapWidth + outsideTerrainTiles; x += 1) {
-        const { x: worldX, y: worldY } = project({ x, y });
-        const offMap = x < 0 || x >= mapWidth || y < 0 || y >= mapHeight;
-        const tile = offMap ? 1 + (Math.abs(x + y * 7) % 5 === 0 ? 1 : 0) : groundTiles[y * mapWidth + x]!;
-        this.add.image(worldX, worldY, 'ground', tile - 1).setOrigin(.5, 0).setDepth(-6000);
-      }
-    }
+    this.createGround();
 
     drawScenery(this);
     this.building = drawHouse(this);
@@ -138,6 +136,7 @@ export class HouseScene extends Phaser.Scene {
   }
 
   update(time: number) {
+    this.cullGround();
     if (this.coordinator.getPauseState().isPaused) return;
 
     const lastFrameAt = this.lastFrameAt;
@@ -165,6 +164,43 @@ export class HouseScene extends Phaser.Scene {
         this.timeSinceSurvivorDeath = survivorDeathAnimationMs;
         this.finishDeathAnimation(state.gameOver);
       }
+    }
+  }
+
+  private createGround() {
+    this.groundChunks = [];
+    const maxX = mapWidth + outsideTerrainTiles;
+    const maxY = mapHeight + outsideTerrainTiles;
+    for (let row = -outsideTerrainTiles; row < maxY; row += groundChunkSize) {
+      for (let column = -outsideTerrainTiles; column < maxX; column += groundChunkSize) {
+        const endX = Math.min(maxX, column + groundChunkSize);
+        const endY = Math.min(maxY, row + groundChunkSize);
+        const tiles: Phaser.GameObjects.GameObject[] = [];
+        const detail = this.add.graphics();
+        for (let y = row; y < endY; y += 1) {
+          for (let x = column; x < endX; x += 1) {
+            const point = project({ x, y });
+            const offMap = x < 0 || x >= mapWidth || y < 0 || y >= mapHeight;
+            const tile = offMap ? 1 + Number(Math.abs(x + y * 7) % 5 === 0) : groundTiles[y * mapWidth + x]!;
+            tiles.push(this.add.image(point.x, point.y, 'ground', tile - 1).setOrigin(.5, 0));
+            if (!offMap) drawTerrainDetail(detail, x, y, tile);
+          }
+        }
+        this.groundChunks.push({
+          art: this.add.container(0, 0, [...tiles, detail]).setDepth(-6000),
+          left: project({ x: column, y: endY }).x - tileWidth,
+          right: project({ x: endX, y: row }).x + tileWidth,
+          top: project({ x: column, y: row }).y - tileHeight,
+          bottom: project({ x: endX, y: endY }).y + tileHeight,
+        });
+      }
+    }
+  }
+
+  private cullGround() {
+    const view = this.cameras.main.worldView;
+    for (const { art, left, right, top, bottom } of this.groundChunks) {
+      art.setVisible(right >= view.left && left <= view.right && bottom >= view.top && top <= view.bottom);
     }
   }
 
@@ -202,7 +238,9 @@ export class HouseScene extends Phaser.Scene {
     }
     const point = project(target.position);
     const camera = this.cameras.main;
-    const offset = target.kind === 'container' ? 37 : 13;
+    const offset = target.kind === 'opening'
+      ? (target.object.type === 'door' ? 67 : 49)
+      : (target.kind === 'container' ? 37 : 13);
     this.showInteractionPrompt({
       target,
       x: (point.x - camera.worldView.x) * camera.zoom,
@@ -310,13 +348,26 @@ export class HouseScene extends Phaser.Scene {
   }
 
   private drawOcclusion(state: GameState, blend: number) {
-    for (const { art, houseId } of this.building.roofArt) {
-      const target = houseId === state.occupiedHouseId ? 0 : 1;
-      this.fade(art, target, blend);
+    const view = this.cameras.main.worldView;
+    const inView = (bounds: Parameters<typeof isArtInView>[1]) => blend === 1 || isArtInView(view, bounds);
+    if (this.displayedOpenings !== state.closedOpeningIds) {
+      for (const { id, panel, openLeaf } of this.building.openingArt) {
+        const closed = state.closedOpeningIds.includes(id);
+        panel.setVisible(closed);
+        openLeaf?.setVisible(!closed);
+      }
+      this.displayedOpenings = state.closedOpeningIds;
     }
-    for (const { art, houseId } of this.building.nearWalls) {
-      const target = houseId === state.occupiedHouseId ? 0 : 1;
-      this.fade(art, target, blend);
+    for (const { art, houseId } of this.building.signs) art.setVisible(houseId !== state.occupiedHouseId);
+    for (const { art, bounds } of this.building.fixedWalls) art.setVisible(inView(bounds));
+    for (const parts of [this.building.roofArt, this.building.nearWalls]) {
+      for (const { art, houseId, bounds, porch } of parts) {
+        if (!inView(bounds)) art.setVisible(false);
+        else {
+          const covered = porch && contains(porch, state.survivor.position);
+          this.fade(art, Number(houseId !== state.occupiedHouseId && !covered), blend);
+        }
+      }
     }
   }
 

@@ -63,7 +63,7 @@ At narrower widths, place the detail pane **below** the grid rather than croppin
                  └────────────────────────────────────────────────────────────────┘
 ```
 
-Slot numbers in this **document** are references to positions only; do not add keybind labels or imply `1`–`0` hotkeys. The approved bottom HUD item strip is a **passive preview** of existing slots and must never create additional capacity.
+Slot numbers in this **document** refer to positions. The bottom HUD strip provides click access to the first ten slots under FR-I17. The full grid handles rearrangement and retains all twelve positions.
 
 ---
 
@@ -99,6 +99,7 @@ Keep slot hit targets comfortably clickable (~44px minimum), and prevent long na
 - Each occupied position references exactly **one distinct item instance**.
 - Duplicates of the *same item type* are allowed as **separate unstacked items**, each consuming its own slot. Example: three Bandages occupy three slots; **do not show `×3`** in a single cell.
 - Pickups and container transfers fill the lowest-index empty slot. Indices 0 through 11 run left to right across each row from the top. Existing items keep their positions.
+- Drag a carried item onto an empty slot to move it, or onto an occupied slot to swap the two instances. Use **Move** and then select a destination for the same action by keyboard or click. Moving either item preserves its equipment state and saves its resulting slot.
 - The currently equipped Baseball Bat must refer to an item instance actually present in the inventory, or equipment must be a clearly defined saved entity using the same item ownership rules; **no duplicated free weapon**.
 - Equipping or unequipping the bat does **not** silently destroy the item or change inventory capacity.
 
@@ -122,6 +123,8 @@ After an Equip succeeds, mark the occupied slot as equipped. After a Use succeed
 The inventory owns clicks on Use, Close and every slot through pointer release. Closing Inventory clears its own pause reason. An interrupted action continues from its saved phase once all pause reasons and any required Resume have cleared. A new swing requires a fresh press in the gameplay world.
 
 **Drop placement and ownership**
+
+Click **Drop** or drag a carried item onto the **Drop** button. Releasing it outside a valid target leaves it in its slot.
 
 1. Validate that the original slot still holds the requested instance and that Drop is allowed. Test the survivor’s feet, then the nearest walkable position within immediate, unobstructed pickup reach. Check collision before placement.
 2. Place the same item instance at the validated position. Only after placement succeeds, clear the source slot and clear the equipped reference if it points to this item. Publish one completed change so the HUD and save snapshots see the item in exactly one location. Repeating the command for the emptied slot creates no additional drop.

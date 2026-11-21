@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator.ts';
 import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
+import { starterStock } from '../game/items.ts';
+import { starterZombieSpawns, zombieSpawns } from '../game/world.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
 
@@ -31,13 +33,46 @@ test('Continue accepts a zero-duration pursuit and lets it expire on the next ac
   assert.equal(continued.step(16).zombies[0]!.behavior.kind, 'wander');
 });
 
-test('existing schema-one saves can omit the navigation retry state', () => {
+test('schema-one runs migrate without replacing existing loot or encounters', () => {
   const original = captureRun(createGameCoordinator());
-  const zombies = original.zombies.map(({ navigationRetry: _retry, ...zombie }) => zombie);
-  const raw = { ...saveRecord(1, null), run: { id: runId, snapshot: { ...original, zombies } } };
+  const { closedOpeningIds: _openings, survivor, ...snapshot } = original;
+  const { bleeding: _bleeding, ...legacySurvivor } = survivor;
+  const containers = Object.fromEntries(Object.keys(starterStock).map((id) => [id, original.containers[id]]));
+  containers.starter_container = [];
+  const zombies = original.zombies.slice(0, starterZombieSpawns.length).map(({ navigationRetry: _retry, ...zombie }) => zombie);
+  const raw = { ...saveRecord(1, null), schemaVersion: 1, worldVersion: 'neighborhood-1', run: {
+    id: runId, snapshot: { ...snapshot, containers, survivor: legacySurvivor, zombies },
+  } };
   const read = inspectSaveRecord(structuredClone(raw));
   assert.equal(read.kind, 'ready');
-  assert.ok(restoreGameCoordinator(read.run.snapshot).getState().zombies.every((actor) => actor.navigationRetry === null));
+  assert.equal(read.revision, 1);
+  const restored = restoreGameCoordinator(read.run.snapshot).getState();
+  assert.deepEqual(restored.containers.starter_container, []);
+  assert.ok(restored.containers.lot_2_1_cabinet?.some(({ kind }) => kind === 'bandage'));
+  assert.equal(restored.survivor.bleeding, false);
+  assert.equal(restored.zombies.length, zombieSpawns.length);
+  assert.ok(restored.zombies.every((actor) => actor.navigationRetry === null));
+});
+
+test('committed saves keep closed entrances, active bleeding and the time left to investigate noise', () => {
+  const game = createGameCoordinator({ position: { x: 13.3, y: 8.28 } });
+  const door = game.getInteractionTarget();
+  assert.ok(door?.kind === 'opening');
+  assert.deepEqual(game.interact(door), { status: 'opening_changed' });
+  const base = captureRun(game);
+  const [first, ...rest] = base.zombies;
+  const snapshot = {
+    ...base,
+    survivor: { ...base.survivor, health: 78, bleeding: true },
+    zombies: [{ ...first!, behavior: { kind: 'investigate' as const, destination: { x: 24, y: 3 }, remainingMs: 1700 } }, ...rest],
+  };
+  const read = inspectSaveRecord(structuredClone(saveRecord(4, { id: runId, snapshot })));
+  assert.equal(read.kind, 'ready');
+  const loaded = restoreGameCoordinator(read.run.snapshot);
+  assert.ok(loaded.getState().closedOpeningIds.includes(door.id));
+  assert.equal(loaded.getState().survivor.bleeding, true);
+  assert.deepEqual(loaded.getState().zombies[0]?.behavior, snapshot.zombies[0]?.behavior);
+  assert.equal(loaded.getState().activeTimeMs, snapshot.activeTimeMs);
 });
 
 test('a committed snapshot restores changed survivor, inventory, loot, drops and fractional time', () => {
@@ -49,6 +84,7 @@ test('a committed snapshot restores changed survivor, inventory, loot, drops and
   assert.deepEqual(original.transferItem(starter.id, bat!.id), { status: 'transferred', slot: 0 });
   assert.deepEqual(original.transferItem(starter.id, water!.id), { status: 'transferred', slot: 1 });
   assert.equal(original.toggleEquip(0, bat!.id), true);
+  assert.equal(original.moveInventoryItem(0, bat!.id, 7), true);
   assert.deepEqual(original.dropItem(1, water!.id), { status: 'dropped' });
   original.closeInventoryPanel();
   original.setMovement({ x: 0, y: 1 }, true);
@@ -66,7 +102,8 @@ test('a committed snapshot restores changed survivor, inventory, loot, drops and
   assert.deepEqual(state.survivor.position, original.getState().survivor.position);
   assert.equal(state.survivor.stamina, 99.5385);
   assert.equal(state.survivor.equippedWeaponId, bat!.id);
-  assert.deepEqual(state.survivor.inventory[0], bat);
+  assert.equal(state.survivor.inventory[0], null);
+  assert.deepEqual(state.survivor.inventory[7], bat);
   assert.deepEqual(state.containers[starter.id], []);
   assert.deepEqual(state.droppedItems.map(({ item }) => item), [water]);
   assert.equal(state.activeTimeMs, 17.75);

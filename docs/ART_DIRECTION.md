@@ -24,7 +24,7 @@ The intended atmosphere is tense, lonely, and practical — not fantastical, neo
 | Asset/feature | MVP expectation | Excluded until after MVP |
 |---|---|---|
 | World | One handcrafted neighborhood | Streaming multi-town open world |
-| Houses | Exactly three enterable houses | Multi-floor buildings, large interiors |
+| Buildings | Three starter houses and 18 enterable expansion buildings | Multi-floor buildings |
 | Environment | Road, sidewalk, yards, fences, trees, basic static props | Dynamic destruction/weather |
 | Interior | Beds, cupboards, drawers, supply boxes, basic furniture | Crafting stations, complex utility systems |
 | Player | **Two selectable default survivors: male and female**, equal gameplay and full MVP animation coverage | Full character creator / cosmetic outfits |

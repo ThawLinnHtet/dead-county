@@ -3,45 +3,70 @@
   z-index: 2;
   bottom: var(--game-hud-bottom);
   left: 50%;
-  display: grid;
-  width: min(calc(100% - 2rem), clamp(23rem, 36vw, 36rem));
-  justify-items: center;
+  width: min(calc(100% - 2rem), clamp(22rem, 31vw, 31rem));
+  padding: 0 4px 4px;
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-frame-radius);
+  background: var(--dc-frame);
+  box-shadow: var(--dc-frame-shadow);
   transform: translateX(-50%);
   font-family: var(--dc-font-body);
-  pointer-events: none;
   user-select: none;
 }
 
+.inventory-preview__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  min-height: 1.8rem;
+  padding: .2rem .3rem;
+}
+
 .inventory-preview__weapon {
-  margin: 0 0 4px;
-  pointer-events: auto;
-  padding: .25rem .6rem;
-  border: 1px solid var(--dc-border);
-  border-radius: 3px;
-  background: var(--dc-bg);
+  min-width: 0;
+  margin: 0;
   color: var(--dc-text);
-  font-size: .75rem;
-  font-weight: 600;
-  line-height: 1.2;
+  font: 400 1rem/1.15 var(--dc-font-display);
+  letter-spacing: .04em;
 }
 
 .inventory-preview__weapon[data-equipped="true"] {
   color: var(--dc-warning);
 }
 
+.inventory-preview__shortcut {
+  flex: none;
+  padding: 0 .15rem;
+  border-radius: 2px;
+  color: var(--dc-text);
+  font: 500 .69rem/1.2 var(--dc-font-body);
+  cursor: pointer;
+}
+
+.inventory-preview__shortcut:hover { color: var(--dc-focus); }
+
+.inventory-preview__shortcut kbd {
+  display: inline-grid;
+  min-width: 1rem;
+  height: 1rem;
+  margin-right: .15rem;
+  place-items: center;
+  border: 1px solid var(--dc-border);
+  border-radius: 2px;
+  background: var(--dc-slot);
+  color: var(--dc-text);
+  font: inherit;
+}
+
 .inventory-preview__slots {
   display: grid;
   width: 100%;
   grid-template-columns: repeat(10, minmax(0, 1fr));
-  gap: clamp(2px, .38vw, 5px);
+  gap: 2px;
   margin: 0;
-  padding: 4px;
-  border: 1px solid var(--dc-border);
-  border-radius: 5px;
-  background: var(--dc-surface);
-  box-shadow: 0 3px 9px rgb(0 0 0 / 38%);
+  padding: 0;
   list-style: none;
-  pointer-events: auto;
 }
 
 .inventory-preview__slots > li {
@@ -50,8 +75,31 @@
   aspect-ratio: 1;
   place-items: center;
   border: 1px solid var(--dc-border);
-  border-radius: 3px;
-  background: var(--dc-bg);
+  border-radius: 2px;
+  background: var(--dc-slot);
+}
+
+.inventory-preview__slots button {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0;
+  place-items: center;
+  border-radius: inherit;
+  cursor: pointer;
+}
+
+.inventory-preview__slots button[aria-disabled="false"]:hover {
+  background: var(--dc-accent-pressed);
+  box-shadow: inset 0 0 0 1px var(--dc-focus);
+}
+
+.inventory-preview__slots button[aria-disabled="true"] { cursor: default; }
+
+.inventory-preview button:focus-visible {
+  outline: 2px solid var(--dc-focus);
+  outline-offset: 1px;
 }
 
 .inventory-preview__slots > li[data-equipped="true"] {

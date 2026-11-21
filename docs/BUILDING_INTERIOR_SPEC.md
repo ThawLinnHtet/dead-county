@@ -9,6 +9,8 @@
 
 ## 1. Purpose and approval boundary
 
+The master PRD now defines operable openings and additional enterable destinations. The original three layouts below remain the starter block.
+
 Specify the **three playable, single-story suburban houses** that belong to the approved compact neighborhood. This document covers visual identity, layout, continuous outdoor-to-indoor gameplay, roof/wall occlusion, collision, zombie access, looting, React UI behavior, data contracts, save/load behavior, and acceptance tests.
 
 **Binding rule:** An image is visual reference, not authority over the PRD. If mockup text suggests `E Enter House`, a loading screen, a separate top-down interior, weapons other than the baseball bat, ammunition, a day/night clock, or extra loot items, **ignore those details**. The approved rules in Sections 3–12 below supersede conflicting labels in concept images.

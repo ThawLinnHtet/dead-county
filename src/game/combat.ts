@@ -45,16 +45,16 @@ export function aimFrom(origin: WorldPoint, target: WorldPoint): WorldPoint | nu
   return Number.isFinite(length) && length > 0.0001 ? { x: x / length, y: y / length } : null;
 }
 
-export function isInReach(origin: WorldPoint, target: WorldPoint, reach: number): boolean {
-  return Math.hypot(target.x - origin.x, target.y - origin.y) <= reach && hasLineOfSight(origin, target);
+export function isInReach(origin: WorldPoint, target: WorldPoint, reach: number, sight = hasLineOfSight): boolean {
+  return Math.hypot(target.x - origin.x, target.y - origin.y) <= reach && sight(origin, target);
 }
 
 export function selectBatTarget<T extends { id: string; health: number; position: WorldPoint }>(
-  origin: WorldPoint, aim: WorldPoint, zombies: readonly T[],
+  origin: WorldPoint, aim: WorldPoint, zombies: readonly T[], sight = hasLineOfSight,
 ): T | undefined {
   const ties = 0.000000001;
   const candidates = zombies.flatMap((zombie) => {
-    if (zombie.health <= 0 || !isInReach(origin, zombie.position, batConfig.reach)) return [];
+    if (zombie.health <= 0 || !isInReach(origin, zombie.position, batConfig.reach, sight)) return [];
     const x = zombie.position.x - origin.x;
     const y = zombie.position.y - origin.y;
     const angle = Math.atan2(Math.abs(aim.x * y - aim.y * x), aim.x * x + aim.y * y);

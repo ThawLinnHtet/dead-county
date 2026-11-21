@@ -33,7 +33,8 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       prompt.hidden = target === null;
       if (!placement || !target) return;
       if (changed) {
-        label.textContent = target.kind === 'container' ? 'Search' : 'Pick up ' + itemDefinitions[target.item.kind].name;
+        label.textContent = target.kind === 'container' ? 'Search' : target.kind === 'opening'
+          ? `${target.closed ? 'Open' : 'Close'} ${target.object.type}` : 'Pick up ' + itemDefinitions[target.item.kind].name;
         promptInset = prompt.offsetWidth / 2 + 4;
       }
       prompt.style.left = `clamp(${promptInset}px, ${placement.x}px, calc(100% - ${promptInset}px))`;
@@ -58,7 +59,10 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
         || coordinator.getState().gameOver) return;
       if (event.code === 'KeyE' && displayed) {
         const result = coordinator.interact(displayed);
-        if (result.status === 'inventory_full') {
+        if (result.status === 'opening_blocked') {
+          feedback.textContent = displayed.kind === 'opening' && displayed.object.type === 'door'
+            ? 'Doorway blocked' : 'Window blocked';
+        } else if (result.status === 'inventory_full') {
           feedback.textContent = 'Inventory full';
         } else {
           displayed = null;

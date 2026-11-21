@@ -1,6 +1,6 @@
 # Dead County MVP specification
 
-Draft for issue publication. Based on the approved Dead County PRD v2.22 and its domain specs, glossary and architecture decisions.
+Based on the approved Dead County PRD and its domain specs, glossary and architecture decisions.
 
 ## Problem Statement
 
@@ -8,7 +8,7 @@ A desktop player wants to start a tense survival run in their browser, figure ou
 
 ## Solution
 
-Build an original single-player isometric survival game in one authored neighborhood with three walk-in houses. Let the player choose either of two mechanically identical survivors, find and equip a bat, explore for food and water, avoid or fight ordinary zombies, and survive as long as possible. Ship with a keyboard-and-mouse interface, one local save slot and a death-and-restart flow.
+Build an original single-player isometric survival game in one authored neighborhood with 21 enterable buildings. Let the player choose either of two mechanically identical survivors, find and equip a bat, scavenge, manage noise, secure a building by closing its openings, and survive into later days. Ship with a keyboard-and-mouse interface, one local save slot and a death-and-restart flow.
 
 ## User Stories
 

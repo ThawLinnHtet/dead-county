@@ -46,11 +46,11 @@ interface Candidate {
   readonly estimate: number;
 }
 
-export function findRoute(start: WorldPoint, goal: WorldPoint): WorldPoint[] | null {
-  if (!canOccupy(goal)) return null;
+export function findRoute(start: WorldPoint, goal: WorldPoint, traverse = canTraverse): WorldPoint[] | null {
+  if (!canOccupy(goal) || !traverse(goal, goal)) return null;
 
-  const entries = nearbyCells(start, 2).filter((index) => canTraverse(start, center(index)));
-  const exits = new Set(nearbyCells(goal, 2).filter((index) => canTraverse(center(index), goal)));
+  const entries = nearbyCells(start, 2).filter((index) => traverse(start, center(index)));
+  const exits = new Set(nearbyCells(goal, 2).filter((index) => traverse(center(index), goal)));
   if (!entries.length || !exits.size) return null;
 
   const frontier: Candidate[] = [];
@@ -63,23 +63,27 @@ export function findRoute(start: WorldPoint, goal: WorldPoint): WorldPoint[] | n
   }
 
   // Each cell has one best cost. Discard superseded entries before expanding.
-  while (frontier.length > 0) {
+  let expanded = 0;
+  while (frontier.length > 0 && expanded < 1500) {
     let bestIndex = 0;
     for (let index = 1; index < frontier.length; index += 1) {
       if (frontier[index]!.estimate < frontier[bestIndex]!.estimate) bestIndex = index;
     }
     const { cell, cost } = frontier.splice(bestIndex, 1)[0]!;
     if (cost !== costs[cell]) continue;
+    expanded += 1;
     if (exits.has(cell)) {
       const route = [goal];
       for (let index = cell; index !== -1; index = previous[index]!) route.push(center(index));
       return route.reverse();
     }
 
+    const origin = center(cell);
     for (const nextCell of neighborsOf(cell)) {
       const position = center(nextCell);
-      const nextCost = cost + distance(center(cell), position);
+      const nextCost = cost + distance(origin, position);
       if (nextCost >= costs[nextCell]!) continue;
+      if (traverse !== canTraverse && !traverse(origin, position)) continue;
       costs[nextCell] = nextCost;
       previous[nextCell] = cell;
       frontier.push({ cell: nextCell, cost: nextCost, estimate: nextCost + distance(position, goal) });

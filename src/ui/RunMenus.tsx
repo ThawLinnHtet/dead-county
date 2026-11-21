@@ -14,7 +14,7 @@ const controls = [
   { keys: ['Shift'], action: 'Hold with movement to sprint. After exhaustion, release and press again once Stamina recovers.' },
   { keys: ['Mouse'], action: 'Face and aim toward the cursor in the game world.' },
   { keys: ['Left Click'], action: 'Swing the baseball bat when equipped and ready.' },
-  { keys: ['E'], action: 'Search the indicated container or pick up the indicated dropped item.' },
+  { keys: ['E'], action: 'Search, pick up an item, or open or close the highlighted door or window.' },
   { keys: ['I'], action: 'Open Inventory.' },
   { keys: ['M', 'Minimap click'], action: 'Open the full neighborhood map.' },
   { keys: ['Esc'], action: 'Pause or close the current overlay.' },
