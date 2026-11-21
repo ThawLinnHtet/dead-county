@@ -60,7 +60,8 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       if (event.code === 'KeyE' && displayed) {
         const result = coordinator.interact(displayed);
         if (result.status === 'opening_blocked') {
-          feedback.textContent = 'Opening blocked';
+          feedback.textContent = displayed.kind === 'opening' && displayed.object.type === 'door'
+            ? 'Doorway blocked' : 'Window blocked';
         } else if (result.status === 'inventory_full') {
           feedback.textContent = 'Inventory full';
         } else {

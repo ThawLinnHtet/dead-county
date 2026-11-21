@@ -14,7 +14,7 @@ import type { GameCoordinator, GameOverResult, GameState, InteractionTarget } fr
 import { itemDefinitions } from './items';
 import { isArtInView } from './isometricDrawing';
 import groundUrl from './maps/ground.png';
-import { groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, unproject } from './world';
+import { contains, groundTiles, mapHeight, mapWidth, project, tileHeight, tileWidth, unproject } from './world';
 import zombieVariantsUrl from './zombie-variants.png';
 import { zombieConfig } from './zombie';
 
@@ -238,7 +238,9 @@ export class HouseScene extends Phaser.Scene {
     }
     const point = project(target.position);
     const camera = this.cameras.main;
-    const offset = target.kind === 'container' ? 37 : target.kind === 'opening' ? 49 : 13;
+    const offset = target.kind === 'opening'
+      ? (target.object.type === 'door' ? 67 : 49)
+      : (target.kind === 'container' ? 37 : 13);
     this.showInteractionPrompt({
       target,
       x: (point.x - camera.worldView.x) * camera.zoom,
@@ -349,15 +351,22 @@ export class HouseScene extends Phaser.Scene {
     const view = this.cameras.main.worldView;
     const inView = (bounds: Parameters<typeof isArtInView>[1]) => blend === 1 || isArtInView(view, bounds);
     if (this.displayedOpenings !== state.closedOpeningIds) {
-      for (const { id, panel } of this.building.openingArt) panel.setVisible(state.closedOpeningIds.includes(id));
+      for (const { id, panel, openLeaf } of this.building.openingArt) {
+        const closed = state.closedOpeningIds.includes(id);
+        panel.setVisible(closed);
+        openLeaf?.setVisible(!closed);
+      }
       this.displayedOpenings = state.closedOpeningIds;
     }
     for (const { art, houseId } of this.building.signs) art.setVisible(houseId !== state.occupiedHouseId);
     for (const { art, bounds } of this.building.fixedWalls) art.setVisible(inView(bounds));
     for (const parts of [this.building.roofArt, this.building.nearWalls]) {
-      for (const { art, houseId, bounds } of parts) {
+      for (const { art, houseId, bounds, porch } of parts) {
         if (!inView(bounds)) art.setVisible(false);
-        else this.fade(art, Number(houseId !== state.occupiedHouseId), blend);
+        else {
+          const covered = porch && contains(porch, state.survivor.position);
+          this.fade(art, Number(houseId !== state.occupiedHouseId && !covered), blend);
+        }
       }
     }
   }

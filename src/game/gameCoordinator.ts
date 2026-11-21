@@ -254,10 +254,15 @@ function makeGameCoordinator({
       ...openings.flatMap((object) => {
         const point = { x: object.x + object.width / 2, y: object.y + object.height / 2 };
         const origin = state.survivor.position;
-        const distance = Math.hypot(point.x - origin.x, point.y - origin.y);
-        if (distance > 1.08 || !hasLineOfSight(origin, point, closed.filter((opening) => opening !== object))) return [];
+        const dx = point.x - origin.x;
+        const dy = point.y - origin.y;
+        const alongY = object.height > object.width;
+        const [across, along] = alongY ? [dx, dy] : [dy, dx];
+        const approachReach = object.type === 'door' ? 1.65 : 1.08;
+        if (Math.hypot(across / approachReach, along / 1.08) > 1
+          || !hasLineOfSight(origin, point, closed.filter((opening) => opening !== object))) return [];
         const target = { kind: 'opening' as const, id: object.name, position: point, object, closed: closed.includes(object) };
-        return [{ target, distance }];
+        return [{ target, distance: Math.hypot(dx, dy) }];
       }),
     ];
   }

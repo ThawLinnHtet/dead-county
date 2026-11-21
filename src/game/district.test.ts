@@ -49,6 +49,30 @@ test('closing a door blocks movement and vision only within that run and survive
   assert.ok(!createGameCoordinator().getState().closedOpeningIds.includes(door.id));
 });
 
+test('the starter door can be operated from either approach and cannot close on the survivor', () => {
+  const id = 'house_a_door';
+  const inside = createGameCoordinator({ position: { x: 12.52, y: 8.28 }, zombieSpawns: [] });
+  const close = inside.getInteractionTarget();
+  assert.ok(close?.kind === 'opening' && close.id === id && !close.closed);
+  assert.deepEqual(inside.interact(close), { status: 'opening_changed' });
+
+  const outside = restoreGameCoordinator({
+    ...inside.getState(), survivor: { ...inside.getState().survivor, position: { x: 15.35, y: 8.28 } },
+  });
+  const open = outside.getInteractionTarget();
+  assert.ok(open?.kind === 'opening' && open.id === id && open.closed);
+  assert.deepEqual(outside.interact(open), { status: 'opening_changed' });
+
+  const threshold = createGameCoordinator({ position: { x: 13.97, y: 8.28 }, zombieSpawns: [] });
+  const blocked = threshold.getInteractionTarget();
+  assert.ok(blocked?.kind === 'opening' && blocked.id === id);
+  assert.deepEqual(threshold.interact(blocked), { status: 'opening_blocked' });
+  assert.ok(!threshold.getState().closedOpeningIds.includes(id));
+
+  const outOfReach = createGameCoordinator({ position: { x: 16.0, y: 8.28 }, zombieSpawns: [] });
+  assert.notEqual(outOfReach.getInteractionTarget()?.id, id);
+});
+
 test('a window is a second route into a building after it is opened from outside', () => {
   const opening = openings.find(({ name }) => name === 'lot_2_1_window')!;
   const game = createGameCoordinator({ position: { x: opening.x + .8, y: opening.y + .6 }, zombieSpawns: [] });
