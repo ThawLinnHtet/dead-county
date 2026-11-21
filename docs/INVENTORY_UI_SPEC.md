@@ -13,16 +13,17 @@
 
 The user approved the Inventory UI concept's **layout and aesthetic**: matte charcoal surfaces, subtle weathered frames, warm cream typography, clearly outlined square item cells, restrained red/olive selection treatments, and an item detail region. The game world remains discernible behind a dim overlay.
 
-This approval does **not** authorize the concept image's extra mechanics. The reference includes a gun, axe, medkits, ammo, miscellaneous materials, item quantity badges, a weight meter, weapon durability and a larger inventory grid. **None of these belongs in the Dead County MVP.**
-
-The source of truth is **12 fixed inventory slots in a 4-column × 3-row grid**, with **one item instance per occupied slot**, and **only four item types**:
+The source of truth is 12 fixed inventory slots in a 4-column × 3-row grid, with one item instance per occupied slot and a shared carry weight limit.
 
 - **Baseball Bat** — Equip / Unequip for melee combat.
 - **Canned Food** — Use to reduce hunger severity.
 - **Water Bottle** — Use to reduce thirst severity.
 - **Bandage** — Use to restore health, capped at 100.
+- **Trail Mix** — Use to relieve a small amount of hunger.
+- **Canvas Backpack** — Equip from a normal inventory slot to raise carry capacity. Show its equipped marker on that slot.
+- **Door Wedge** — Use beside a reachable closed door from inside its building. Show the reason when placement is unavailable.
 
-Do not implement quantities, stacks, ammunition, multiple weapon types, item weight, equipment durability, encumbrance, crafting, sorting, filters, gear slots, money or item rarity as part of this screen.
+Show total weight and the current limit together near the grid. A transfer that would exceed the limit leaves the source item in place. Removing the active backpack requires the remaining load to fit the base limit.
 
 ---
 
@@ -204,7 +205,7 @@ type InventoryUIState = {
 
 - [ ] Pressing `I` opens the Inventory panel with **exactly 12 cells (4×3)**; `I`, `Esc`, or `×` closes it.
 - [ ] Only Baseball Bat, Canned Food, Water Bottle and Bandage can appear in occupied slots.
-- [ ] Multiple instances of one item occupy separate slots; no stacks, quantity badges or weight readout.
+- [ ] Item instances occupy separate slots. The weight readout reflects the carried total and the active capacity.
 - [ ] Selecting an item updates the details panel and shows only relevant `Use`, `Equip/Unequip`, `Drop` actions.
 - [ ] Equipped bat is distinguished from merely selected bat; equipment state is restored from saved run.
 - [ ] Food reduces Hunger severity; Water reduces Thirst severity; Bandage restores Health; no stat exceeds its limits.

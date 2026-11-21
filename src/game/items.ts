@@ -3,33 +3,55 @@ import type { MapObject, WorldPoint } from './world.ts';
 import { districtBuildings } from './district.ts';
 
 export const itemDefinitions = {
-  baseball_bat: { name: 'Baseball Bat', category: 'Melee Weapon', description: 'A sturdy wooden bat. Equip it for melee attacks.' },
+  baseball_bat: {
+    name: 'Baseball Bat', category: 'Melee Weapon', description: 'A sturdy wooden bat. Equip it for melee attacks.', weight: 1.3,
+  },
   water_bottle: {
     name: 'Water Bottle',
     category: 'Drink',
     description: 'A bottle of water. Reduces Thirst.',
+    weight: 1,
     use: { stat: 'thirst', change: -60, noBenefit: 'Thirst is already at zero.' },
   },
   canned_food: {
     name: 'Canned Food',
     category: 'Food',
     description: 'A can of preserved food. Reduces Hunger.',
+    weight: .8,
     use: { stat: 'hunger', change: -65, noBenefit: 'Hunger is already at zero.' },
   },
   bandage: {
     name: 'Bandage',
     category: 'Medical',
     description: 'A clean bandage. Stops bleeding and restores lost Health.',
+    weight: .15,
     use: { stat: 'health', change: 40, noBenefit: 'Health is full.' },
+  },
+  trail_mix: {
+    name: 'Trail Mix', category: 'Food', description: 'A light snack that takes the edge off Hunger.', weight: .2,
+    use: { stat: 'hunger', change: -27, noBenefit: 'Hunger is already at zero.' },
+  },
+  backpack: {
+    name: 'Canvas Backpack', category: 'Gear', description: 'Equip it to carry up to 9 kg across your inventory slots.', weight: .6,
+  },
+  door_wedge: {
+    name: 'Door Wedge', category: 'Shelter', description: 'Use beside a closed door from inside to resist forced entry.', weight: .25,
   },
 } as const;
 
 export type ItemKind = keyof typeof itemDefinitions;
 export const inventoryQuickSlotCount = 10;
-export type ConsumableStat = (typeof itemDefinitions)[Exclude<ItemKind, 'baseball_bat'>]['use']['stat'];
+export type ConsumableStat = 'health' | 'hunger' | 'thirst';
+export const baseCarryCapacity = 5;
+export const backpackCapacity = 9;
 export interface ItemInstance {
   readonly id: string;
   readonly kind: ItemKind;
+}
+
+export function carriedLoad(inventory: readonly (ItemInstance | null)[], packId: string | null) {
+  const weight = inventory.reduce((sum, item) => sum + (item ? itemDefinitions[item.kind].weight : 0), 0);
+  return { weight, capacity: packId ? backpackCapacity : baseCarryCapacity };
 }
 
 export interface DroppedItem {
@@ -47,8 +69,14 @@ export const starterStock: ContainerStock = {
   house_c_kitchen_cabinet: ['canned_food', 'water_bottle'],
 };
 
+export const expandedStock: ContainerStock = {
+  ...starterStock,
+  ...Object.fromEntries(districtBuildings.map(({ id, unexpandedStock }) => [`${id}_cabinet`, unexpandedStock])),
+};
+
 export const authoredStock: ContainerStock = {
   ...starterStock,
+  house_b_living_cabinet: [...starterStock.house_b_living_cabinet!, 'backpack', 'door_wedge'],
   ...Object.fromEntries(districtBuildings.map(({ id, stock }) => [`${id}_cabinet`, stock])),
 };
 

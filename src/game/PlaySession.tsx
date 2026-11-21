@@ -123,8 +123,14 @@ export function PlaySession({
             <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
           </span>
           <span>Move</span>
+          <span className="movement-keys mouse-control" aria-hidden="true"><kbd>C</kbd></span>
+          <span aria-label="Hold C to sneak">Sneak</span>
+          <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Space</kbd></span>
+          <span>Shove</span>
           {batEquipped && (
             <>
+              <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Right Click</kbd></span>
+              <span aria-label="Hold Right Click to ready">Ready</span>
               <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Left Click</kbd></span>
               <span aria-label="Left Click to swing">Swing</span>
             </>

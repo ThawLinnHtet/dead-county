@@ -12,8 +12,11 @@ const survivors = [
 const controls = [
   { keys: ['W', 'A', 'S', 'D'], action: 'Move on screen. Combine keys to move diagonally.' },
   { keys: ['Shift'], action: 'Hold with movement to sprint. After exhaustion, release and press again once Stamina recovers.' },
+  { keys: ['C'], action: 'Hold to sneak. You move slower and are harder for zombies to hear and see.' },
   { keys: ['Mouse'], action: 'Face and aim toward the cursor in the game world.' },
-  { keys: ['Left Click'], action: 'Swing the baseball bat when equipped and ready.' },
+  { keys: ['Right Click'], action: 'Hold over the world to stay aimed while taking deliberate steps.' },
+  { keys: ['Left Click'], action: 'Swing the equipped baseball bat.' },
+  { keys: ['Space'], action: 'Shove a single nearby zombie in the direction you face. Uses Stamina.' },
   { keys: ['E'], action: 'Search, pick up an item, or open or close the highlighted door or window.' },
   { keys: ['I'], action: 'Open Inventory.' },
   { keys: ['M', 'Minimap click'], action: 'Open the full neighborhood map.' },

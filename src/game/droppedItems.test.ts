@@ -140,17 +140,17 @@ test('a full inventory leaves the prompted drop available until a slot is freed'
   const game = createGameCoordinator({
     position,
     zombieSpawns: [],
-    containerStock: { [cabinet]: ['baseball_bat', ...Array<'water_bottle'>(12).fill('water_bottle')] },
+    containerStock: { [cabinet]: ['baseball_bat', ...Array<'bandage'>(12).fill('bandage')] },
   });
-  const [bat, ...bottles] = game.getState().containers[cabinet]!;
+  const [bat, ...bandages] = game.getState().containers[cabinet]!;
   assert.equal(game.search(cabinet), true);
-  for (const bottle of bottles.slice(0, 3)) assert.equal(game.transferItem(cabinet, bottle.id).status, 'transferred');
+  for (const bandage of bandages.slice(0, 3)) assert.equal(game.transferItem(cabinet, bandage.id).status, 'transferred');
   assert.deepEqual(game.transferItem(cabinet, bat!.id), { status: 'transferred', slot: 3 });
   assert.equal(game.toggleEquip(3, bat!.id), true);
-  for (const bottle of bottles.slice(3, 11)) assert.equal(game.transferItem(cabinet, bottle.id).status, 'transferred');
+  for (const bandage of bandages.slice(3, 11)) assert.equal(game.transferItem(cabinet, bandage.id).status, 'transferred');
 
   assert.equal(game.dropItem(3, bat!.id).status, 'dropped');
-  assert.deepEqual(game.transferItem(cabinet, bottles[11]!.id), { status: 'transferred', slot: 3 });
+  assert.deepEqual(game.transferItem(cabinet, bandages[11]!.id), { status: 'transferred', slot: 3 });
   game.closeInventoryPanel();
   const displayed = game.getInteractionTarget()!;
   assert.equal(displayed.id, bat!.id);

@@ -1,4 +1,4 @@
-import { advanceAttack, aimFrom, batConfig, beginAttack, isInReach } from './combat.ts';
+import { advanceAttack, aimFrom, batConfig, beginAttack, isInReach, shoveConfig } from './combat.ts';
 import type { AttackState } from './combat.ts';
 import { findRoute } from './navigation.ts';
 import { canOccupy, canTraverse, hasLineOfSight, zombieSpawns } from './world.ts';
@@ -28,6 +28,7 @@ type ZombieBehavior = {
 
 export type WorldSound = { readonly position: WorldPoint; readonly reach: number };
 const ordinaryTraversal = { canOccupy, canTraverse, hasLineOfSight } satisfies Traversal;
+type ZombieTraversal = Traversal & { findClosedDoorApproach?: (origin: WorldPoint, target: WorldPoint) => WorldPoint | null };
 
 type NavigationRetry = { readonly failures: number; readonly nextAttemptAtMs: number };
 
@@ -74,7 +75,7 @@ function distance(a: WorldPoint, b: WorldPoint): number {
 }
 
 function createZombie({ id, position, destination, appearanceId = 'zombie_civilian' }: ZombieSpawn,
-  restored?: ZombieState, traversal = ordinaryTraversal) {
+  restored?: ZombieState, traversal: ZombieTraversal = ordinaryTraversal) {
   const { canOccupy, canTraverse, hasLineOfSight } = traversal;
   if (!canOccupy(position) && restored?.health !== 0) throw new Error('Zombie spawn must be walkable: ' + id);
   let randomState = 2166136261;
@@ -193,7 +194,10 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
   }
 
   function movementGoal(behavior: ZombieBehavior) {
-    return behavior.kind === 'chase' ? behavior.lastKnownPosition : behavior.destination;
+    if (behavior.kind !== 'chase') return behavior.destination;
+    const target = behavior.lastKnownPosition;
+    if (behavior.graceRemainingMs === null) return target;
+    return traversal.findClosedDoorApproach?.(state.position, target) ?? target;
   }
 
   function rebuildNavigation(activeTimeMs: number) {
@@ -253,6 +257,23 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
     getState: () => state,
     hear,
     rebuildNavigation,
+    receiveShove(origin: WorldPoint) {
+      const direction = aimFrom(origin, state.position) ?? { x: 1, y: 0 };
+      const displaced = {
+        x: state.position.x + direction.x * shoveConfig.knockback,
+        y: state.position.y + direction.y * shoveConfig.knockback,
+      };
+      state = {
+        ...state,
+        attack: {
+          kind: 'stagger', phase: 'recovery', remainingMs: shoveConfig.staggerMs,
+          direction: { x: -direction.x, y: -direction.y }, damageApplied: false,
+        },
+        position: canTraverse(state.position, displaced) ? displaced : state.position,
+        moving: false, navigationRetry: null,
+      };
+      resetPath();
+    },
     receiveBatHit(origin: WorldPoint, activeTimeMs: number) {
       const { position } = state;
       const direction = aimFrom(origin, position);
@@ -299,11 +320,11 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
   };
 }
 
-export function createZombies(spawns: readonly ZombieSpawn[] = zombieSpawns, traversal?: Traversal) {
+export function createZombies(spawns: readonly ZombieSpawn[] = zombieSpawns, traversal?: ZombieTraversal) {
   return spawns.map((spawn) => createZombie(spawn, undefined, traversal));
 }
 
-export function restoreZombies(zombies: readonly ZombieState[], activeTimeMs: number, traversal?: Traversal) {
+export function restoreZombies(zombies: readonly ZombieState[], activeTimeMs: number, traversal?: ZombieTraversal) {
   return zombies.map((zombie) => {
     const actor = createZombie({
       id: zombie.id, position: zombie.position, destination: zombie.position, appearanceId: zombie.appearanceId,

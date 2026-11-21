@@ -1,5 +1,5 @@
 import type Phaser from 'phaser';
-import { batConfig, damageCueMs } from './combat';
+import { batConfig, damageCueMs, shoveConfig } from './combat';
 import type { AttackState } from './combat';
 import { project } from './world';
 import type { WorldPoint } from './world';
@@ -14,12 +14,19 @@ function screenAngle(direction: WorldPoint) {
 
 export function drawBat(
   art: Graphics, feet: WorldPoint, facingLeft: boolean, attack: AttackState | null, lean: number, height: number,
+  readyAim?: WorldPoint,
 ) {
   const side = facingLeft ? -1 : 1;
   const { x, y } = feet;
   let gripX = x + side * 8;
   let gripY = y - 25 * height;
   let angle = -1.05;
+  if (readyAim && !attack) {
+    const aim = screenAngle(readyAim);
+    gripX = x + Math.cos(aim) * 10;
+    gripY = y - 32 * height + Math.sin(aim) * 5;
+    angle = Math.atan2(Math.sin(aim - .75), Math.cos(aim - .75) * side);
+  }
   if (attack) {
     const aim = screenAngle(attack.direction);
     switch (attack.phase) {
@@ -59,6 +66,18 @@ export function drawBat(
   art.lineStyle(6, 0x342417).lineBetween(gripX, gripY, tipX, tipY);
   art.lineStyle(3, 0xbb8956).lineBetween(gripX, gripY - .5, tipX, tipY - .5);
   art.lineStyle(4, 0x6c4832).lineBetween(gripX, gripY, gripX + Math.cos(angle) * 7, gripY + Math.sin(angle) * 7);
+}
+
+export function drawShove(art: Graphics, feet: WorldPoint, attack: AttackState) {
+  const angle = screenAngle(attack.direction);
+  const extension = attack.phase === 'contact' ? 21 : attack.phase === 'windup' ? 5
+    : 7 + 10 * attack.remainingMs / shoveConfig.recoveryMs;
+  for (const offset of [-4, 4]) {
+    const shoulder = { x: feet.x + offset, y: feet.y - 32 };
+    const hand = { x: shoulder.x + Math.cos(angle) * extension, y: shoulder.y + Math.sin(angle) * extension - 3 };
+    art.lineStyle(5, 0x544633).lineBetween(shoulder.x, shoulder.y, hand.x, hand.y);
+    art.fillStyle(0xb98767).fillCircle(hand.x, hand.y, 2.8);
+  }
 }
 
 export function drawBiteArms(art: Graphics, feet: WorldPoint, attack: AttackState, lean: number) {

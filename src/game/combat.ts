@@ -13,8 +13,13 @@ export const batConfig = {
 };
 
 export const damageCueMs = 280;
+export const shoveConfig = {
+  reach: 1.12, halfArc: Math.PI / 3, stepSpeed: 1.05, staminaCost: 16,
+  windupMs: 100, contactMs: 85, recoveryMs: 330, knockback: .62, staggerMs: 400,
+};
 
 export interface AttackState {
+  readonly kind?: 'shove' | 'stagger';
   readonly phase: 'windup' | 'contact' | 'recovery';
   readonly remainingMs: number;
   readonly direction: WorldPoint;
@@ -49,16 +54,17 @@ export function isInReach(origin: WorldPoint, target: WorldPoint, reach: number,
   return Math.hypot(target.x - origin.x, target.y - origin.y) <= reach && sight(origin, target);
 }
 
-export function selectBatTarget<T extends { id: string; health: number; position: WorldPoint }>(
+export function selectMeleeTarget<T extends { id: string; health: number; position: WorldPoint }>(
   origin: WorldPoint, aim: WorldPoint, zombies: readonly T[], sight = hasLineOfSight,
+  { reach, halfArc }: Pick<typeof batConfig, 'reach' | 'halfArc'> = batConfig,
 ): T | undefined {
   const ties = 0.000000001;
   const candidates = zombies.flatMap((zombie) => {
-    if (zombie.health <= 0 || !isInReach(origin, zombie.position, batConfig.reach, sight)) return [];
+    if (zombie.health <= 0 || !isInReach(origin, zombie.position, reach, sight)) return [];
     const x = zombie.position.x - origin.x;
     const y = zombie.position.y - origin.y;
     const angle = Math.atan2(Math.abs(aim.x * y - aim.y * x), aim.x * x + aim.y * y);
-    return angle <= batConfig.halfArc ? [{ zombie, angle, distance: Math.hypot(x, y) }] : [];
+    return angle <= halfArc ? [{ zombie, angle, distance: Math.hypot(x, y) }] : [];
   });
 
   // Floating point arithmetic can add tiny differences to geometrically equal values.

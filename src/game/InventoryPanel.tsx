@@ -2,7 +2,7 @@ import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { DragEvent, KeyboardEvent } from 'react';
 import type { GameCoordinator } from './gameCoordinator';
 import { ItemIcon } from './ItemIcon';
-import { itemDefinitions } from './items';
+import { carriedLoad, itemDefinitions } from './items';
 import type { ItemInstance } from './items';
 import { roundSurvivalStat, survivalStatNames } from './survival';
 import './inventoryPanel.css';
@@ -31,6 +31,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
     (container && coordinator.getState().containers[container.name]) || noItems);
   const inventory = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.inventory);
   const equippedId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.equippedWeaponId);
+  const packId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.equippedPackId);
   const swinging = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.attack !== null);
   const slot = selection?.source === 'inventory' ? inventory.findIndex((item) => item?.id === selection.id) : -1;
   const selected = selection?.source === 'loot' ? items.find((item) => item.id === selection.id) : inventory[slot];
@@ -40,6 +41,9 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
   const itemUse = selection?.source === 'inventory' && selected && selected.kind !== 'baseball_bat'
     ? coordinator.getItemUse(slot, selected.id) : null;
   const useReason = itemUse?.status === 'no_benefit' ? itemUse.reason : null;
+  const packSelected = selected?.kind === 'backpack';
+  const { weight, capacity } = carriedLoad(inventory, packId);
+  const shownWeight = Number(weight.toFixed(2));
 
   useLayoutEffect(() => {
     const panel = dialog.current;
@@ -69,7 +73,8 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
   function transfer(containerId: string, itemId: string) {
     const result = coordinator.transferItem(containerId, itemId);
     if (result.status !== 'transferred') {
-      setMessage(result.status === 'inventory_full' ? 'Inventory full' : 'Item unavailable');
+      setMessage(result.status === 'inventory_full' ? 'Inventory full'
+        : result.status === 'too_heavy' ? 'Too heavy to carry.' : 'Item unavailable');
       return;
     }
     setMessage('');
@@ -159,10 +164,10 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
   function useSelectedItem() {
     if (selection?.source !== 'inventory') return;
     const result = coordinator.useItem(slot, selection.id);
-    if (result.status === 'used') {
+    if (result.status === 'used' || result.status === 'wedged') {
       setSelection(null);
       setMoveSource(null);
-      setMessage(`${survivalStatNames[result.stat]} ${roundSurvivalStat(result.value)} / 100`);
+      setMessage(result.status === 'wedged' ? 'Door wedged.' : `${survivalStatNames[result.stat]} ${roundSurvivalStat(result.value)} / 100`);
       close.current?.focus();
     } else {
       setMessage(result.status === 'no_benefit' ? result.reason : 'Item unavailable');
@@ -180,6 +185,8 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
       setMessage('Cannot drop item here.');
     } else if (result.status === 'swing_in_progress') {
       setMessage('Finish your swing first.');
+    } else if (result.status === 'too_heavy') {
+      setMessage('Lighten your inventory before removing the backpack.');
     } else {
       setMessage('Item unavailable');
     }
@@ -268,6 +275,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
         )}
         <section className="inventory-panel inventory-storage" aria-label="Inventory slots">
           {container && <h3>Inventory</h3>}
+          <p className="inventory-carry" aria-label="Carried weight">{shownWeight} / {capacity} kg</p>
           <div ref={grid} className="inventory-slots" onDragOver={(event) => highlightInventoryTarget(event)}
             onDragLeave={leaveDropArea} onDrop={(event) => dropInInventory(event)}>
             {inventory.map((item, index) => (
@@ -279,11 +287,11 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
                 aria-disabled={!item && !moveSource}
                 aria-pressed={!!item && selection?.source === 'inventory' && selection.id === item.id}
                 aria-label={item
-                  ? `Slot ${index + 1}, ${itemDefinitions[item.kind].name}${item.id === equippedId ? ', equipped' : ''}`
+                  ? `Slot ${index + 1}, ${itemDefinitions[item.kind].name}${item.id === equippedId || item.id === packId ? ', equipped' : ''}`
                   : `Slot ${index + 1}, empty`}
                 draggable={!!item}
                 data-inventory-slot={index}
-                data-equipped={!!item && item.id === equippedId}
+                data-equipped={!!item && (item.id === equippedId || item.id === packId)}
                 data-dragging={dragging?.source === 'inventory' && dragging.slot === index}
                 data-drop-target={dropTarget === index}
                 data-loot-receiver={dragging?.source === 'loot' && firstEmpty === index}
@@ -297,7 +305,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
                 {!item && dropTarget === index && dragging && selected?.id === dragging.id && (
                   <span className="inventory-slot-preview"><ItemIcon kind={selected.kind} /></span>
                 )}
-                {item && item.id === equippedId && <span className="equipment-mark" aria-hidden="true">✓</span>}
+                {item && (item.id === equippedId || item.id === packId) && <span className="equipment-mark" aria-hidden="true">✓</span>}
                 {item && index === received?.slot && item.id === received.itemId && (
                   <span className="received-item" onAnimationEnd={() => setReceived(null)} />
                 )}
@@ -314,21 +322,28 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
             <>
               <div className="item-detail-heading">
                 <ItemIcon kind={selected.kind} />
-                <div><h3>{definition.name}</h3><p>{definition.category}</p></div>
+                <div><h3>{definition.name}</h3><p>{definition.category} · {definition.weight} kg</p></div>
               </div>
               <p>{definition.description}</p>
               {selection?.source === 'inventory' && (
                 <>
                   <div className="inventory-actions">
-                    {selected.kind === 'baseball_bat' ? (
+                    {selected.kind === 'baseball_bat' || packSelected ? (
                       <button
                         className="inventory-action inventory-action--primary"
                         type="button"
                         disabled={equipLocked}
                         aria-describedby={equipLocked ? 'inventory-swing-reason' : undefined}
-                        onClick={() => coordinator.toggleEquip(slot, selected.id)}
+                        onClick={() => {
+                          if (!packSelected) {
+                            coordinator.toggleEquip(slot, selected.id);
+                            return;
+                          }
+                          const result = coordinator.togglePack(slot, selected.id);
+                          setMessage(result === 'too_heavy' ? 'Lighten your inventory before removing the backpack.' : '');
+                        }}
                       >
-                        {selected.id === equippedId ? 'Unequip' : 'Equip'}
+                        {selected.id === equippedId || selected.id === packId ? 'Unequip' : 'Equip'}
                       </button>
                     ) : (
                       <button
