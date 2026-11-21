@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createGameCoordinator } from './gameCoordinator.ts';
+import { createGameCoordinator, restoreGameCoordinator } from './gameCoordinator.ts';
 import type { GameCoordinator } from './gameCoordinator.ts';
 import type { WorldPoint } from './world.ts';
 import type { ZombieSpawn } from './zombie.ts';
 import { bleedingDamagePerMs } from './survival.ts';
+import { batConfig } from './combat.ts';
 
 const survivorPosition = { x: 11.9, y: 9.15 };
 const cabinet = 'starter_container';
@@ -76,6 +77,65 @@ test('the bat commits world aim and damages only the ordinal winner among equal 
     game.step(250);
     assert.equal(game.getState().zombies.find(({ id }) => id === 'Z-zombie')?.health, damage[0]!.health);
   }
+});
+
+test('the bat guide previews manual aim, commits through wind-up, and clears during pause or contact', () => {
+  const right = { x: 12.7, y: 9.15 };
+  const left = { x: 10.9, y: 9.15 };
+  const game = createGameCoordinator({
+    position: survivorPosition, zombieSpawns: [spawn('a-zombie', right), spawn('Z-zombie', right)],
+  });
+  game.setReady(true);
+  assert.equal(game.getBatAimPreview(), null);
+  equipBat(game);
+  assert.equal(game.getBatAimPreview(), null);
+  game.setReady(true);
+  game.aimAt(right);
+  const preview = game.getBatAimPreview();
+  assert.ok(preview?.center);
+  assert.ok(Math.abs(preview.center.x - survivorPosition.x - batConfig.reach) < 1e-9);
+  assert.equal(preview.target?.id, 'Z-zombie');
+  game.aimAt(left);
+  assert.equal(game.getBatAimPreview()?.target, null);
+  assert.ok(game.getBatAimPreview()!.center!.x < survivorPosition.x);
+
+  game.toggleInventory();
+  assert.equal(game.getBatAimPreview(), null);
+  game.closeInventoryPanel();
+  assert.equal(game.getBatAimPreview(), null);
+  game.setReady(true);
+  assert.equal(game.startBatSwing(right), true);
+  game.aimAt(left);
+  const locked = game.getBatAimPreview();
+  assert.ok(locked?.committed);
+  assert.deepEqual(locked.center, preview.center);
+  assert.equal(locked.target, null);
+  const contact = game.step(batConfig.windupMs);
+  assert.equal(game.getBatAimPreview(), null);
+  assert.deepEqual(contact.zombies.filter(({ lastBatHitAtMs }) => lastBatHitAtMs !== null).map(({ id }) => id), ['Z-zombie']);
+  game.step(batConfig.contactMs + batConfig.recoveryMs);
+  assert.ok(game.getBatAimPreview());
+  game.setReady(false);
+  assert.equal(game.getBatAimPreview(), null);
+});
+
+test('a closed door clips the bat guide and hides a target inside the nominal swing radius', () => {
+  const position = { x: 13.36, y: 8.28 };
+  const target = { x: 14.48, y: 8.28 };
+  const fresh = createGameCoordinator({ position: survivorPosition, zombieSpawns: [spawn('porch', target)] });
+  equipBat(fresh);
+  const initial = fresh.getState();
+  const game = restoreGameCoordinator({ ...initial, survivor: { ...initial.survivor, position } });
+  game.setReady(true);
+  game.aimAt(target);
+  const blocked = game.getBatAimPreview();
+  assert.ok(blocked?.center && blocked.center.x < 13.9);
+  assert.equal(blocked.arc[Math.floor(blocked.arc.length / 2)], null);
+  assert.equal(blocked.target, null);
+  const door = game.getInteractionTarget();
+  assert.ok(door?.kind === 'opening' && door.closed);
+  assert.equal(game.interact(door).status, 'opening_changed');
+  assert.equal(game.getBatAimPreview()?.target?.id, 'porch');
 });
 
 test('two simultaneous bites reach contact once each and a nonlethal bite preserves the swing', () => {

@@ -84,6 +84,7 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   canSee(position: WorldPoint): boolean;
   listenAt(position: WorldPoint, reach: number): { volume: number; muffled: boolean } | null;
   aimAt(target: WorldPoint | null): void;
+  getBatAimPreview(): BatAimPreview | null;
   step(deltaMs: number): GameState;
   startBatSwing(target: WorldPoint): boolean;
   startShove(): boolean;
@@ -105,6 +106,14 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   getItemUse(slot: number, itemId: string): ItemUse;
   useItem(slot: number, itemId: string): UseResult;
   dropItem(slot: number, itemId: string): DropResult;
+}
+
+export interface BatAimPreview {
+  readonly origin: WorldPoint;
+  readonly arc: readonly (WorldPoint | null)[];
+  readonly center: WorldPoint | null;
+  readonly target: Pick<ZombieState, 'id' | 'position'> | null;
+  readonly committed: boolean;
 }
 
 export type InteractionTarget =
@@ -299,6 +308,28 @@ function makeGameCoordinator({
     const heading = survivor.facing.x * dx + survivor.facing.y * dy;
     const peripheralRange = heading >= .12 * distance ? range : heading >= -.42 * distance ? 4.25 : 1.55;
     return distance <= Math.min(range, peripheralRange) && traversal.hasLineOfSight(survivor.position, position);
+  }
+
+  function getBatAimPreview(): BatAimPreview | null {
+    const { position: origin, attack, equippedWeaponId, facing } = state.survivor;
+    if (!ready || !equippedWeaponId || state.gameOver || state.sleep || pause.getPauseState().isPaused
+      || (attack && (attack.kind || attack.phase !== 'windup'))) return null;
+
+    const aim = attack?.direction ?? (pointerTarget && aimFrom(origin, pointerTarget)) ?? facing;
+    const heading = Math.atan2(aim.y, aim.x);
+    const target = attack ? undefined : selectMeleeTarget(origin, aim, state.zombies, traversal.hasLineOfSight);
+    const samples = 20;
+    const arc = Array.from({ length: samples + 1 }, (_, index) => {
+      const angle = heading + batConfig.halfArc * (2 * index / samples - 1);
+      const point = { x: origin.x + Math.cos(angle) * batConfig.reach, y: origin.y + Math.sin(angle) * batConfig.reach };
+      return traversal.hasLineOfSight(origin, point) ? point : null;
+    });
+    const nearCenter = { x: origin.x + aim.x * .35, y: origin.y + aim.y * .35 };
+    const center = arc[samples / 2] ?? (traversal.hasLineOfSight(origin, nearCenter) ? nearCenter : null);
+    return {
+      origin, arc, center, committed: attack !== null,
+      target: target && canSee(target.position) ? target : null,
+    };
   }
 
   function listenAt(position: WorldPoint, reach: number) {
@@ -730,6 +761,7 @@ function makeGameCoordinator({
     isReady: () => ready,
     isSneaking: () => sneakHeld,
     canSee,
+    getBatAimPreview,
     listenAt,
     aimAt(target) {
       if (pause.getPauseState().isPaused || state.gameOver || state.sleep || state.survivor.attack) return;

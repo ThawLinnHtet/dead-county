@@ -1,17 +1,42 @@
 .map-hud {
   position: absolute;
   z-index: 2;
-  top: clamp(1rem, 3vw, 2.5rem);
-  right: clamp(1rem, 3vw, 2.5rem);
+  top: var(--game-hud-edge);
+  right: var(--game-hud-edge);
   display: flex;
   align-items: flex-start;
-  gap: clamp(.6rem, 1vw, 1rem);
+  gap: .75rem;
   pointer-events: none;
 }
 
-.map-hud > .survival-clock {
-  position: static;
+.survival-clock {
+  display: grid;
+  grid-template-columns: max-content;
+  min-width: 7.5rem;
+  gap: .33rem;
+  justify-content: center;
+  padding: .6rem .65rem .55rem;
+  color: var(--dc-text);
+  text-align: center;
   pointer-events: auto;
+}
+
+.survival-clock-label {
+  font: 400 1rem/1 var(--dc-font-display);
+  letter-spacing: .065em;
+}
+
+.survival-clock time {
+  font: 600 1.02rem/1.1 var(--field-numbers);
+  font-variant-numeric: tabular-nums;
+}
+
+.neighborhood-day {
+  padding-top: .35rem;
+  border-top: 1px solid var(--field-seam);
+  color: var(--dc-warning);
+  font: 500 .69rem/1.25 var(--dc-font-body);
+  font-variant-numeric: tabular-nums;
 }
 
 .minimap,
@@ -30,14 +55,21 @@
   width: clamp(7.25rem, 11.72vw, 10.75rem);
   aspect-ratio: 1;
   overflow: hidden;
-  border: 2px solid #a99b80;
+  border: 3px solid #8e7858;
   border-radius: 50%;
   outline: none;
   background: #333826;
-  box-shadow: 0 0 0 3px var(--map-ink), 0 5px 14px rgb(0 0 0 / 64%);
+  box-shadow: 0 0 0 1px var(--map-ink), 0 5px 14px rgb(0 0 0 / 64%);
   cursor: pointer;
-  clip-path: circle(50%);
   pointer-events: auto;
+}
+
+@media (max-width: 40rem) {
+  .map-hud {
+    flex-direction: column-reverse;
+    align-items: center;
+    gap: .4rem;
+  }
 }
 
 .minimap::after {

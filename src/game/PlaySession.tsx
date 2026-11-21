@@ -47,6 +47,7 @@ export function PlaySession({
   const gameOver = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().gameOver);
   const [revealedResult, revealGameOver] = useState<GameOverResult | null>(null);
   const [inventoryItemId, setInventoryItemId] = useState<string>();
+  const [controlsOpen, setControlsOpen] = useState(false);
   const clock = neighborhoodTime(survivalSeconds * 1000);
 
   function openInventory(itemId?: string) {
@@ -102,13 +103,10 @@ export function PlaySession({
       <div ref={foreground} inert={pause.isPaused || gameOver !== null}>
         <GameViewport coordinator={coordinator} onDeathAnimationEnd={revealGameOver} />
         <div className="neighborhood-night" style={{ opacity: clock.darkness }} aria-hidden="true" />
-        <header className="game-location">
-          <p className="game-location-label" role="status">{houseNames[occupiedHouseId ?? ''] ?? 'Neighborhood'}</p>
-          <SurvivalMeters coordinator={coordinator} />
-        </header>
+        <SurvivalMeters coordinator={coordinator} location={houseNames[occupiedHouseId ?? ''] ?? 'Neighborhood'} />
         <div className="map-hud">
-          <div className="survival-clock">
-            <span>Survival Time</span>
+          <div className="survival-clock field-frame">
+            <span className="survival-clock-label">Survival Time</span>
             <time role="timer" aria-label="Survival time" dateTime={`PT${survivalSeconds}S`}>
               {formatSurvivalTime(survivalSeconds)}
             </time>
@@ -118,25 +116,34 @@ export function PlaySession({
         </div>
         <InventoryPreview coordinator={coordinator} onOpenInventory={openInventory}
           onReturnToWorld={() => focusGameplay(foreground.current)} />
-        <aside className="movement-hint" aria-label="Gameplay controls">
-          <span className="movement-keys" aria-hidden="true">
-            <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>
-          </span>
-          <span>Move</span>
-          <span className="movement-keys mouse-control" aria-hidden="true"><kbd>C</kbd></span>
-          <span aria-label="Hold C to sneak">Sneak</span>
-          <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Space</kbd></span>
-          <span>Shove</span>
-          {batEquipped && (
-            <>
-              <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Right Click</kbd></span>
-              <span aria-label="Hold Right Click to ready">Ready</span>
-              <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Left Click</kbd></span>
-              <span aria-label="Left Click to swing">Swing</span>
-            </>
+        <aside className="movement-hint field-frame" aria-label="Gameplay controls">
+          <div className="movement-hint__body" id="game-controls" hidden={!controlsOpen}>
+            <span className="movement-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move</span>
+            <span className="movement-keys"><kbd>Shift</kbd></span><span>Sprint</span>
+            <span className="movement-keys"><kbd>C</kbd></span><span>Sneak</span>
+            <span className="movement-keys"><kbd>Space</kbd></span><span>Shove</span>
+            <span className="movement-keys"><kbd>E</kbd></span><span>Interact</span>
+            <span className="movement-keys"><kbd>I</kbd></span><span>Inventory</span>
+            <span className="movement-keys"><kbd>M</kbd></span><span>Map</span>
+            <span className="movement-keys"><kbd>Esc</kbd></span><span>Pause</span>
+          </div>
+          {batEquipped ? (
+            <div className="movement-hint__summary">
+              <span>Hold <kbd>Right Click</kbd> to aim</span>
+              <span><kbd>Left Click</kbd> to swing</span>
+            </div>
+          ) : !controlsOpen && (
+            <div className="movement-hint__summary movement-hint__summary--move">
+              <span className="movement-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span> Move
+            </div>
           )}
-          <span className="movement-keys mouse-control" aria-hidden="true"><kbd>Esc</kbd></span>
-          <span aria-label="Escape to pause">Pause</span>
+          <button className="movement-hint__toggle" type="button" aria-expanded={controlsOpen}
+            aria-controls="game-controls" onClick={(event) => {
+              setControlsOpen(!controlsOpen);
+              if (event.detail > 0) focusGameplay(foreground.current);
+            }}>
+            Controls
+          </button>
         </aside>
       </div>
       {!gameOver && (

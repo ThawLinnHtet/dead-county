@@ -10,8 +10,8 @@ type HouseOccluder = { art: Art; houseId: string; bounds: ReturnType<typeof artB
 type WallOccluder = Omit<HouseOccluder, 'porch'> & { footprint: WorldRect; partition: boolean };
 
 const creamSiding = {
-  boards: [0xa69b82, 0x827b68, 0xa4967c], seam: 0x585448, highlight: 0xb2a58a,
-  weathering: 0x534c40, sill: 0x514537, trim: 0xc1b393,
+  boards: [0xbead8b, 0x766b59, 0xb39a75], seam: 0x564c3f, highlight: 0xcbaf85,
+  weathering: 0x534632, sill: 0x514136, trim: 0xe0c59a,
 } as const;
 const graySiding = {
   boards: [0xa5a59b, 0x797e7a, 0x969b94], seam: 0x494e4a, highlight: 0xbbbbb0,
@@ -55,8 +55,13 @@ export function drawHouse(scene: Phaser.Scene) {
   const shadows = scene.add.graphics().setDepth(-5250);
   for (const house of houses) {
     const { x, y, width, height } = house;
-    shape(shadows, 0x24251c, [at(x + width, y), at(x + width + .67, y + .33),
-      at(x + width + .67, y + height + .33), at(x + .67, y + height + .33), at(x, y + height)], .26);
+    const castShadows = house.name === 'house_a'
+      ? [[2, 1.25, .17], [1.6, .98, .29]] as const
+      : [[.67, .33, .26]] as const;
+    for (const [east, south, opacity] of castShadows) {
+      shape(shadows, 0x24271e, [at(x + width, y), at(x + width + east, y + south),
+        at(x + width + east, y + height + south), at(x + east, y + height + south), at(x, y + height)], opacity);
+    }
     floor(shadows, { x: x - .07, y: y - .07, width: width + .22, height: height + .22 }, 0x2d271c, 0, .32);
   }
   const ground = scene.add.graphics().setDepth(-5000);
@@ -74,6 +79,9 @@ export function drawHouse(scene: Phaser.Scene) {
   }
   for (const house of houses) {
     floor(ground, { x: house.x - .09, y: house.y - .09, width: house.width + .18, height: house.height + .18 }, 0x2b271b, 0, .12);
+  }
+  for (const wall of walls) {
+    if (wall.name === 'house_a_west' || wall.name === 'house_a_north') drawStarterWindowLight(ground, wall);
   }
 
   const nearWalls: WallOccluder[] = [];
@@ -137,6 +145,27 @@ export function drawHouse(scene: Phaser.Scene) {
     return { id: opening.name, panel, openLeaf: null, damage: null };
   });
   return { nearWalls, fixedWalls, roofArt, openingArt, signs };
+}
+
+function drawStarterWindowLight(art: Art, wall: MapObject) {
+  const vertical = wall.height > wall.width;
+  const point = (across: number, height: number) => at(
+    wall.x + (vertical ? wall.width : across) + height * .038,
+    wall.y + (vertical ? across : wall.height) + height * .023,
+  );
+  for (const center of wallWindows(wall)) {
+    shape(art, 0xe4af6b, [
+      point(center - .44, 26), point(center + .44, 26), point(center + .44, 50), point(center - .44, 50),
+    ], .19);
+    for (const [left, right] of [[-.34, -.033], [.033, .34]] as const) {
+      for (const [bottom, top] of [[28, 37], [39, 48]] as const) {
+        shape(art, 0xfac67f, [
+          point(center + left, bottom), point(center + right, bottom),
+          point(center + right, top), point(center + left, top),
+        ], .27);
+      }
+    }
+  }
 }
 
 const doorHeight = 54;

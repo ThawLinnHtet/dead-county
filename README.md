@@ -41,7 +41,7 @@ Fatigue builds while you are awake. Close the entrance to your chosen shelter, t
 | `Shift` + movement | Sprint while Stamina permits |
 | Hold `C` + movement | Sneak with a lower profile and quieter steps |
 | Mouse movement | Face toward the pointer over the game world |
-| Hold right mouse button | Stay aimed at the cursor while taking slower side steps and back steps |
+| Hold right mouse button | Aim while taking slower side steps and back steps. With a bat equipped, the arc shows your reach and brackets mark a reachable target. |
 | Left click | Swing the equipped bat in the pointed direction |
 | `Space` | Spend Stamina to shove one nearby zombie in the faced direction |
 | `E` | Search, pick up an item, or open or close an indicated passage |

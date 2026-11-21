@@ -14,7 +14,7 @@ const controls = [
   { keys: ['Shift'], action: 'Hold with movement to sprint. After exhaustion, release and press again once Stamina recovers.' },
   { keys: ['C'], action: 'Hold to sneak. You move slower and are harder for zombies to hear and see.' },
   { keys: ['Mouse'], action: 'Face and aim toward the cursor in the game world.' },
-  { keys: ['Right Click'], action: 'Hold over the world to stay aimed while taking deliberate steps.' },
+  { keys: ['Right Click'], action: 'Hold to aim while taking deliberate steps. With a bat equipped, the arc shows your reach.' },
   { keys: ['Left Click'], action: 'Swing the equipped baseball bat.' },
   { keys: ['Space'], action: 'Shove a single nearby zombie in the direction you face. Uses Stamina.' },
   { keys: ['E'], action: 'Search, pick up an item, or open or close the highlighted door or window.' },

@@ -1,4 +1,6 @@
-import { at, box, floor, inset, nearDepth, noise, screenShape, stroke } from './isometricDrawing';
+import { at, box, floor, inset, nearDepth, noise, screenShape, shape, stroke } from './isometricDrawing';
+import { lawnVariation } from './terrainTexture';
+import { drawParkedCar, drawTree } from './sceneryProps';
 import { details, mapWidth, outdoorProps, project } from './world';
 import type { MapObject } from './world';
 
@@ -10,13 +12,37 @@ export function drawTerrainDetail(ground: Art, x: number, y: number, tile: numbe
     const p = at(x + .1 + noise(seed + 8) * .55, y + .23 + noise(seed + 16) * .4);
     stroke(ground, 0x272a27, [p, at(p.x + .18, p.y + .12), at(p.x + .2, p.y + .29), at(p.x + .34, p.y + .31)], 1, .5);
   }
+  if (tile === 4 && x >= 14 && x <= 23 && y < 22 && noise(seed) > .4) {
+    for (let index = 0; index < 4; index += 1) {
+      const leaf = seed + index * 71;
+      const p = at(x + noise(leaf + 12) * .13, y + .13 + noise(leaf + 19) * .74);
+      stroke(ground, index === 0 ? 0x5f6542 : 0x806445, [
+        p, at(p.x + .025 + noise(leaf) * .05, p.y + .032),
+      ], 1.6, .78);
+    }
+  }
   if (tile > 2) return;
-  const selections = noise(seed) > .87 ? 4 : noise(seed) > .60 ? 2 : 0;
-  for (let index = 0; index < selections; index += 1) {
-    const point = project(at(x + noise(seed + index + 1), y + noise(seed - index - 5)));
-    const color = [0x6c714e, 0x656d49, 0x4b5536, 0x817650][index % 4]!;
-    ground.fillStyle(color, .76).fillRect(Math.floor(point.x), Math.floor(point.y), 3 + index % 2, 1);
-    if (index % 2 === 0) ground.fillRect(Math.floor(point.x + 1), Math.floor(point.y - 2), 1, 2);
+  const growth = lawnVariation(x + 16, y - 12);
+  const patches = noise(seed) > 1 - growth * .67 ? 2 : 0;
+  for (let index = 0; index < patches; index += 1) {
+    const px = x + .15 + noise(seed + index * 13 + 10) * .7;
+    const py = y + .15 + noise(seed - index * 17 - 6) * .7;
+    grassTuft(ground, px, py, seed + index * 211, .72 + growth * .38);
+  }
+}
+
+function grassTuft(art: Art, x: number, y: number, seed: number, size: number) {
+  const foot = project({ x, y });
+  const base = { x: Math.round(foot.x), y: Math.round(foot.y) };
+  art.fillStyle(0x35442f, .35).fillEllipse(base.x + 1, base.y + 1, 8 * size, 3 * size);
+  for (let blade = 0; blade < 3; blade += 1) {
+    const offset = (blade - 1) * 2;
+    const leaning = offset * 1.5 + (noise(seed + blade * 29) - .46) * 4;
+    const height = (2.4 + noise(seed + blade * 73) * 4.2) * size;
+    screenShape(art, [0x727d4c, 0x8a8e57, 0x52623b][blade]!, [
+      { x: base.x + offset, y: base.y }, { x: base.x + offset + 1.25, y: base.y - 1 },
+      { x: base.x + leaning, y: base.y - height },
+    ], .84);
   }
 }
 
@@ -39,14 +65,16 @@ export function drawScenery(scene: Phaser.Scene) {
     for (let index = 0; index < detail.width * 14; index += 1) {
       const x = detail.x + noise(index * 61) * detail.width;
       const y = detail.y + noise(index * 23) * detail.height;
-      const color = index % 3 === 0 ? 0x8a8156 : 0x535e3e;
-      stroke(ground, color, [at(x - .08, y - .05), at(x, y), at(x + .02, y - .15)], 2, .85);
+      grassTuft(ground, x, y, Math.round(x * 127 + y * 587) + index, 1.25);
     }
   }
   for (const object of outdoorProps) {
     const art = scene.add.graphics().setDepth(nearDepth(object));
-    if (object.type === 'tree') tree(art, ground, object);
-    if (object.type === 'car') car(art, ground, object);
+    if ((object.type === 'fence' || object.type === 'privacy_fence') && object.x < 18 && object.y < 22) {
+      drawStarterFenceGround(ground, object);
+    }
+    if (object.type === 'tree') drawTree(art, ground, object);
+    if (object.type === 'car') drawParkedCar(art, ground, object);
     if (object.type === 'road_barrier') roadBarrier(art, object);
     if (object.type === 'fence') fence(art, object);
     if (object.type === 'privacy_fence') privacyFence(art, object);
@@ -56,6 +84,30 @@ export function drawScenery(scene: Phaser.Scene) {
       box(art, inset(object, .067), 18, [0x9e8d6d, 0x5b5142, 0x897660]);
       box(art, inset(object, -.075), 8, [0x9e9a88, 0x65665b, 0x817e6e], 16);
     }
+  }
+}
+
+function drawStarterFenceGround(ground: Art, rect: MapObject) {
+  const tall = rect.type === 'privacy_fence';
+  const alongX = rect.width > rect.height;
+  const start = at(rect.x + (alongX ? 0 : rect.width), rect.y + (alongX ? rect.height : 0));
+  const end = at(rect.x + rect.width, rect.y + rect.height);
+  const east = tall ? .96 : .48;
+  const south = tall ? .58 : .29;
+  for (const [scale, opacity] of [[1, .26], [.73, .14]] as const) {
+    shape(ground, 0x22291e, [start, end,
+      at(end.x + east * scale, end.y + south * scale),
+      at(start.x + east * scale, start.y + south * scale),
+    ], opacity);
+  }
+  const length = alongX ? rect.width : rect.height;
+  const seed = Math.floor(rect.x * 127 + rect.y * 587);
+  for (let i = 0; i < length * 7; i += 1) {
+    const along = noise(seed + i * 37) * length;
+    const verge = -.11 - noise(seed + i * 89) * .23;
+    const x = rect.x + (alongX ? along : verge);
+    const y = rect.y + (alongX ? verge : along);
+    grassTuft(ground, x, y, seed + i * 113, .7 + noise(seed + i * 43) * .48);
   }
 }
 
@@ -116,48 +168,4 @@ function fence(art: Art, rect: MapObject) {
     const light = noise(Math.floor(offset * 197)) > .62;
     box(art, interval(offset, .12), light ? 24 : 23, [0xa7a18d, 0x777261, light ? 0x9f9a86 : 0x8d8979]);
   }
-}
-
-function tree(art: Art, ground: Art, rect: MapObject) {
-  const { x, y } = project({ x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 });
-  const seed = Math.round(rect.x * 659 + rect.y * 313);
-  const height = 57 + noise(seed) * 32;
-  ground.fillStyle(0x293327, .33).fillEllipse(x + 20, y + 4, height * 1.17, height * .46);
-  box(art, rect, height * .67, [0x635642, 0x544638, 0x63503b]);
-  const foliage = [0x353f30, 0x3e4935, 0x485139, 0x545940, 0x626448];
-  for (let index = 0; index < 26; index += 1) {
-    const angle = index * 2.4;
-    const radius = (1 - index / 33) * (.52 + noise(seed + index) * .25);
-    const cx = x + Math.cos(angle) * height * radius * .8;
-    const cy = y - height + Math.sin(angle) * height * radius * .46;
-    const spread = (20 + noise(seed - index) * 13) * height / 70;
-    const points = Array.from({ length: 10 }, (_, point) => {
-      const turn = point * Math.PI / 5;
-      const edge = spread * (.47 + noise(seed + index * 16 + point) * .27);
-      return { x: Math.round(cx + Math.cos(turn) * edge), y: Math.round(cy + Math.sin(turn) * edge * .8) };
-    });
-    screenShape(art, foliage[Math.min(Math.floor(index / 5), 4)]!, points);
-    for (let fleck = 0; fleck < 6; fleck += 1) {
-      const rx = Math.round(cx + (noise(seed + index * 8 + fleck) - .5) * spread * .7);
-      const ry = Math.round(cy + (noise(seed - index * 13 + fleck) - .5) * spread * .5);
-      art.fillStyle(fleck % 2 ? 0x727354 : 0x303a2e, .5).fillRect(rx, ry, 3, 2);
-    }
-  }
-}
-
-function car(art: Art, ground: Art, rect: MapObject) {
-  floor(ground, inset(rect, -.12), 0x252a27, 0, .5);
-  const { x, y, width, height } = rect;
-  const rust = [0x896953, 0x61483d, 0x775746] as const;
-  for (const offset of [.58, height - .66]) {
-    for (const dx of [.02, width - .15]) {
-      box(art, { x: x + dx, y: y + offset, width: .2, height: .47 }, 13, [0x343835,0x262827,0x323431]);
-    }
-  }
-  box(art, rect, 13, rust, 5);
-  box(art, { x: x + width * .13, y: y + .9, width: width * .74, height: height - 1.91 }, 14,
-    [0x7a604f, 0x424f4c, 0x576360], 18);
-  box(art, { x: x + width * .18, y: y + 1.12, width: width * .64, height: height - 2.32 }, 2, rust, 32);
-  stroke(art, 0xa28b69, [at(x + .07, y + .03, 14), at(x + .28, y + .03, 14)], 3);
-  stroke(art, 0x663b30, [at(x + width, y + height - .08, 12), at(x + width - .19, y + height - .08, 12)], 3);
 }

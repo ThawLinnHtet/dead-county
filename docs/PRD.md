@@ -1,6 +1,6 @@
 # Dead County — Master Product Requirements Document (PRD)
 
-> **Version 2.29 · 2026-11-21**
+> **Version 2.30 · 2026-11-21**
 >
 > **Status:** Approved MVP product scope; final production geometry, UI screen mockups, and asset atlases remain subject to implementation validation  
 > **Product:** Dead County — original 2D isometric zombie-survival game inspired by the genre of *Project Zomboid*  
@@ -44,6 +44,7 @@
 | **v2.27** | **2026-11-21** | Made exterior doors start closed and unlocked in fresh runs. |
 | **v2.28** | **2026-11-21** | Added one optional locked workshop with a recoverable key and side-window entry. |
 | **v2.29** | **2026-11-21** | Added confirmed-hit blood and audio, surface footsteps, ambient sound, and clearer wall and doorway rendering. |
+| **v2.30** | **2026-11-21** | Added a manual bat aim guide with a range arc and a visible target preview. |
 
 ### First-night milestone
 
@@ -355,6 +356,7 @@ With 20 active zombies, wandering, detection, chase, attack, death and doorway n
 - **FR-C23:** A hit and a miss use the same bat swing animation and swing sound. Confirmed bat hits add a separate impact sound, recoil, and a restrained blood burst. Confirmed bites play their own sound and mark the survivor's impact point. The impacted actor must be identifiable at default zoom with audio muted. Use the actual damage event to time these cues and keep reduced-motion feedback readable.
 - **FR-C24:** A zombie bite has a visually distinct anticipation pose before contact, then a bite motion and a readable recovery. The pose is readable at default zoom. Playtest whether a newcomer recognizes it in time to try stepping clear. Damage timing and reach follow the gameplay rules.
 - **FR-C25:** Holding the right mouse button in the world keeps the survivor facing their aim and slows movement. Pressing Space spends Stamina to commit a short shove. The shove selects one visible, in-range target with the deterministic attack ordering and staggers it without damage. It freezes with other attacks during pauses and survives Continue.
+- **FR-C26:** With a bat equipped, holding the right mouse button shows a ground arc at the bat's reach and a small bracket on the currently reachable, visible target selected by the existing attack rules. Solid geometry clips the guide. During wind-up, the bracket clears and the arc follows the committed swing direction until contact. Releasing aim or opening an overlay hides the guide.
 - **FR-C26:** In the ready stance, side steps are slower than forward steps and back steps are slower than side steps. Shove recovery delays Stamina regeneration. Apply only the portion of a shove's displacement that fits before solid geometry.
 - Unarmed is an allowed equipment **display state**; a full unarmed combat damage system is **not** mandatory. Exactly one weapon item type is supported.
 - No firearm, ammunition, critical hit trees, weapon durability, blocking skill or limb-specific simulation.
@@ -501,7 +503,7 @@ The earlier PRD's **“world map after MVP”** classification is superseded. Th
 | Click circular minimap | Open full neighborhood map |
 | `Esc` | Close foreground overlay if applicable, else pause/resume |
 
-The UI must suppress world input while menu controls are focused; React controls (including clicking the circular minimap) must not pass pointer-down events into Phaser melee attacks. Gameplay pointer aiming uses world-space coordinates, not raw screen-space angle. No rebindable controls, right-click combat stance or mobile/touch controls are in MVP scope.
+The UI must suppress world input while menu controls are focused. React controls, including the circular minimap, must intercept pointer presses before they reach combat. Right-click aiming uses the same world-space direction as the bat swing. The control scheme is for desktop keyboard and mouse.
 
 ### 10.4 Run states
 
