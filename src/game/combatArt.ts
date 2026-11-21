@@ -14,7 +14,7 @@ function screenAngle(direction: WorldPoint) {
 
 export function drawBat(
   art: Graphics, feet: WorldPoint, facingLeft: boolean, attack: AttackState | null, lean: number, height: number,
-  readyAim?: WorldPoint,
+  readyAim: WorldPoint | undefined, female: boolean,
 ) {
   const side = facingLeft ? -1 : 1;
   const { x, y } = feet;
@@ -63,9 +63,20 @@ export function drawBat(
   }
   const tipX = gripX + Math.cos(angle) * 28;
   const tipY = gripY + Math.sin(angle) * 28;
+  if (readyAim || attack) {
+    const shoulderX = x + side * 5 + Math.sin(lean * Math.PI / 180) * 30;
+    const shoulderY = y - 34 * height;
+    const elbowX = (gripX + shoulderX) / 2 - side * 3;
+    const elbowY = (gripY + shoulderY) / 2 + 5;
+    art.lineStyle(6, 0x302920).lineBetween(shoulderX, shoulderY, elbowX, elbowY)
+      .lineBetween(elbowX, elbowY, gripX, gripY);
+    art.lineStyle(4, female ? 0x805742 : 0x686c50).lineBetween(shoulderX, shoulderY, elbowX, elbowY)
+      .lineBetween(elbowX, elbowY, gripX, gripY);
+  }
   art.lineStyle(6, 0x342417).lineBetween(gripX, gripY, tipX, tipY);
   art.lineStyle(3, 0xbb8956).lineBetween(gripX, gripY - .5, tipX, tipY - .5);
   art.lineStyle(4, 0x6c4832).lineBetween(gripX, gripY, gripX + Math.cos(angle) * 7, gripY + Math.sin(angle) * 7);
+  art.fillStyle(0xb68968).fillCircle(gripX, gripY, 2.2);
 }
 
 export function drawShove(art: Graphics, feet: WorldPoint, attack: AttackState) {

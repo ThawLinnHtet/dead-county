@@ -4,7 +4,7 @@ import { districtBuildings } from './district.ts';
 import { createGameCoordinator, restoreGameCoordinator } from './gameCoordinator.ts';
 import { findRoute } from './navigation.ts';
 import { dayLengthMs, neighborhoodTime } from './survival.ts';
-import { canTraverse, hasLineOfSight, houses, openings, project } from './world.ts';
+import { canTraverse, hasLineOfSight, houses, initiallyClosed, openings, project } from './world.ts';
 
 test('the avenue connects the starter block to six blocks with enterable destinations and finite stock', () => {
   assert.equal(houses.length, 21);
@@ -23,14 +23,19 @@ test('the avenue connects the starter block to six blocks with enterable destina
   }
 });
 
-test('closing a door blocks movement and vision only within that run and survives Continue', () => {
+test('fresh entrances start closed, block movement and vision, and keep their saved state', () => {
   const inside = { x: 13.3, y: 8.28 };
   const outside = { x: 14.55, y: 8.28 };
   const game = createGameCoordinator({ position: inside, zombieSpawns: [] });
   const door = game.getInteractionTarget();
-  assert.ok(door?.kind === 'opening' && !door.closed);
+  assert.ok(door?.kind === 'opening' && door.closed);
+  assert.deepEqual(game.getState().closedOpeningIds, initiallyClosed);
   assert.deepEqual(game.interact(door), { status: 'opening_changed' });
   assert.deepEqual(game.interact(door), { status: 'unavailable' });
+  assert.ok(!restoreGameCoordinator(game.getState()).getState().closedOpeningIds.includes(door.id));
+  const opened = game.getInteractionTarget();
+  assert.ok(opened?.kind === 'opening' && !opened.closed);
+  assert.deepEqual(game.interact(opened), { status: 'opening_changed' });
   const record = game.getState();
   const resumed = restoreGameCoordinator(record);
   assert.ok(resumed.getState().closedOpeningIds.includes(door.id));
@@ -46,24 +51,28 @@ test('closing a door blocks movement and vision only within that run and survive
     run.step(1000);
     assert.equal(run.getState().occupiedHouseId, null);
   }
-  assert.ok(!createGameCoordinator().getState().closedOpeningIds.includes(door.id));
+  assert.ok(createGameCoordinator().getState().closedOpeningIds.includes(door.id));
 });
 
 test('the starter door can be operated from either approach and cannot close on the survivor', () => {
   const id = 'house_a_door';
   const inside = createGameCoordinator({ position: { x: 12.52, y: 8.28 }, zombieSpawns: [] });
-  const close = inside.getInteractionTarget();
-  assert.ok(close?.kind === 'opening' && close.id === id && !close.closed);
-  assert.deepEqual(inside.interact(close), { status: 'opening_changed' });
+  const insideDoor = inside.getInteractionTarget();
+  assert.ok(insideDoor?.kind === 'opening' && insideDoor.id === id && insideDoor.closed);
+  assert.deepEqual(inside.interact(insideDoor), { status: 'opening_changed' });
+  assert.ok(!inside.getState().closedOpeningIds.includes(id));
 
   const outside = restoreGameCoordinator({
-    ...inside.getState(), survivor: { ...inside.getState().survivor, position: { x: 15.35, y: 8.28 } },
+    ...inside.getState(), closedOpeningIds: initiallyClosed,
+    survivor: { ...inside.getState().survivor, position: { x: 15.35, y: 8.28 } },
   });
   const open = outside.getInteractionTarget();
   assert.ok(open?.kind === 'opening' && open.id === id && open.closed);
   assert.deepEqual(outside.interact(open), { status: 'opening_changed' });
 
-  const threshold = createGameCoordinator({ position: { x: 13.97, y: 8.28 }, zombieSpawns: [] });
+  const threshold = restoreGameCoordinator({
+    ...outside.getState(), survivor: { ...outside.getState().survivor, position: { x: 13.97, y: 8.28 } },
+  });
   const blocked = threshold.getInteractionTarget();
   assert.ok(blocked?.kind === 'opening' && blocked.id === id);
   assert.deepEqual(threshold.interact(blocked), { status: 'opening_blocked' });

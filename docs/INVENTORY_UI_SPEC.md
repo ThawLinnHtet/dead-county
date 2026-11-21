@@ -20,8 +20,9 @@ The source of truth is 12 fixed inventory slots in a 4-column × 3-row grid, wit
 - **Water Bottle** — Use to reduce thirst severity.
 - **Bandage** — Use to restore health, capped at 100.
 - **Trail Mix** — Use to relieve a small amount of hunger.
-- **Canvas Backpack** — Equip from a normal inventory slot to raise carry capacity. Show its equipped marker on that slot.
+- **Canvas Backpack** — Equip from a normal inventory slot to raise carry capacity and display its six storage slots beneath Inventory. Show its equipped marker on the original slot. Drag items into the backpack or choose **Pack**. Drag back to the main inventory or choose **Unpack** to return the item to the first free slot.
 - **Door Wedge** — Use beside a reachable closed door from inside its building. Show the reason when placement is unavailable.
+- **Workshop Key** — Carry in the main inventory or worn backpack and press **E** at Cedar Workshop's locked door.
 
 Show total weight and the current limit together near the grid. A transfer that would exceed the limit leaves the source item in place. Removing the active backpack requires the remaining load to fit the base limit.
 

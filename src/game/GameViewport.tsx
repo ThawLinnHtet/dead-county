@@ -6,6 +6,15 @@ import { itemDefinitions } from './items';
 
 const movementKeys = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'ShiftRight', 'KeyC']);
 
+function renderSize(parent: HTMLElement) {
+  const density = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+  return {
+    width: Math.max(1, Math.round(parent.clientWidth * density)),
+    height: Math.max(1, Math.round(parent.clientHeight * density)),
+    zoom: 1 / density,
+  };
+}
+
 export function GameViewport({ coordinator, onDeathAnimationEnd }: {
   coordinator: GameCoordinator;
   onDeathAnimationEnd: (result: GameOverResult) => void;
@@ -31,7 +40,9 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       const target = placement?.target ?? null;
       const changed = target?.id !== displayed?.id || target?.kind !== displayed?.kind
         || (target?.kind === 'opening' && displayed?.kind === 'opening'
-          && (target.closed !== displayed.closed || target.wedged !== displayed.wedged));
+          && (target.closed !== displayed.closed || target.wedged !== displayed.wedged || target.lock !== displayed.lock))
+        || (target?.kind === 'container' && displayed?.kind === 'container' && target.empty !== displayed.empty)
+        || (target?.kind === 'bed' && displayed?.kind === 'bed' && target.sleeping !== displayed.sleeping);
       const strain = target?.kind === 'opening' ? target.strain : 'intact';
       const previousStrain = displayed?.kind === 'opening' ? displayed.strain : 'intact';
       displayed = target;
@@ -39,8 +50,12 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       prompt.hidden = target === null;
       if (!placement || !target) return;
       if (changed || strain !== previousStrain) {
-        label.textContent = target.kind === 'container' ? 'Search' : target.kind === 'opening'
-          ? `${target.closed ? 'Open' : 'Close'} ${target.object.type}${target.wedged ? ' (wedged)' : ''}`
+        label.textContent = target.kind === 'container' ? (target.empty ? 'Store' : 'Search')
+          : target.kind === 'bed' ? (target.sleeping ? 'Wake up' : 'Sleep') : target.kind === 'opening'
+          ? target.lock === 'locked' ? 'Locked door'
+            : target.lock === 'key' ? 'Unlock door'
+            : target.lock === 'inside' ? 'Unlatch door'
+            : `${target.closed ? 'Open' : 'Close'} ${target.object.type}${target.wedged ? ' (wedged)' : ''}`
           : 'Pick up ' + itemDefinitions[target.item.kind].name;
         warning.textContent = strain === 'failing' ? 'Near failure' : strain === 'straining' ? 'Strained' : '';
         warning.dataset.strain = strain;
@@ -74,9 +89,16 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       }
       if (event.code === 'KeyE' && displayed) {
         const result = coordinator.interact(displayed);
+        if (displayed.kind === 'opening' && (result.status === 'opening_changed' || result.status === 'opening_locked')) {
+          scene.playOpeningFeedback(displayed, result.status === 'opening_locked');
+        }
         if (result.status === 'opening_blocked') {
           feedback.textContent = displayed.kind === 'opening' && displayed.object.type === 'door'
             ? 'Doorway blocked' : 'Window blocked';
+        } else if (result.status === 'opening_locked') {
+          feedback.textContent = 'Cedar Workshop is locked. Check Cedar House for the key, or try the side window.';
+        } else if (result.status === 'sleep_blocked') {
+          feedback.textContent = result.reason;
         } else if (result.status === 'inventory_full') {
           feedback.textContent = 'Inventory full';
         } else if (result.status === 'too_heavy') {
@@ -89,7 +111,7 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
         event.preventDefault();
         return;
       }
-      if (!movementKeys.has(event.code)) return;
+      if (!movementKeys.has(event.code) || coordinator.getState().sleep) return;
       heldKeys.add(event.code);
       updateMovement();
     }
@@ -99,27 +121,39 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
     }
 
     const unsubscribe = coordinator.subscribe(() => {
-      if (coordinator.getPauseState().isPaused || coordinator.getState().gameOver) heldKeys.clear();
+      if (coordinator.getPauseState().isPaused || coordinator.getState().gameOver || coordinator.getState().sleep) heldKeys.clear();
     });
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);
     window.addEventListener('blur', clearMovement);
 
     let game: Phaser.Game | undefined;
+    let observer: ResizeObserver | undefined;
+    function resize() {
+      if (!game) return;
+      const { width, height, zoom } = renderSize(parent!);
+      const { scale } = game;
+      if (scale.zoom !== zoom) scale.setZoom(zoom);
+      if (scale.gameSize.width !== width || scale.gameSize.height !== height) scale.resize(width, height);
+    }
     const frame = requestAnimationFrame(() => {
       game = new Phaser.Game({
         type: Phaser.AUTO,
         parent,
         backgroundColor: '#3f4934',
         pixelArt: true,
+        audio: { noAudio: true },
         scene,
-        scale: { mode: Phaser.Scale.RESIZE, width: '100%', height: '100%' },
+        scale: { mode: Phaser.Scale.NONE, ...renderSize(parent) },
         input: { keyboard: false, windowEvents: false },
         callbacks: {
           postBoot({ canvas }) {
             canvas.tabIndex = -1;
             canvas.setAttribute('aria-label', 'Dead County game canvas');
             if (document.activeElement === parent) canvas.focus({ preventScroll: true });
+            observer = new ResizeObserver(resize);
+            observer.observe(parent);
+            window.addEventListener('resize', resize);
           },
         },
       });
@@ -130,6 +164,8 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
       window.removeEventListener('blur', clearMovement);
+      window.removeEventListener('resize', resize);
+      observer?.disconnect();
       clearMovement();
       cancelAnimationFrame(frame);
       game?.destroy(true);

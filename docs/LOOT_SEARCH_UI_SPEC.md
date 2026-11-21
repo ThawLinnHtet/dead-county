@@ -11,6 +11,8 @@
 
 ## 1. Approval and scope boundary
 
+The [first-night milestone](PRD.md#first-night-milestone) adds depositing items into mapped containers and transferring directly between a nearby container and equipped backpack. Empty cupboards offer **E Store**, which opens the same overlay. Drag an item onto the destination or choose **Store**, **Pack**, **Unpack**, or **Transfer** as appropriate.
+
 The approved design shows a compact, weathered **Loot Container** panel on the left, the player's **Inventory** in the center, and contextual **selected-item details** at the right, all above the same dimmed isometric game scene. Keep dark-charcoal panels, thin weathered borders, readable cream text, restrained red/olive accents, square item cells, selected-item highlighting, and visible background gameplay.
 
 **This approval is for layout and overall visual language.** The pictured reference also contains a day/night clock, item quantity badges, an implied hotkey bar and `E Take` / `R Take All` shortcuts. Those are **not part of the approved MVP mechanics** and must not be copied literally. Display **elapsed Survival Time**, use **one item per occupied slot**, do **not** show enemy dots on the minimap, and provide a clearly labeled **Transfer** action without adding new keyboard shortcuts.
@@ -27,7 +29,6 @@ The approved design shows a compact, weathered **Loot Container** panel on the l
 ### Not included
 
 - `E Take` or `R Take All` shortcuts, automatic bulk transfers, stack counts, weight/encumbrance, ammo, guns, axes, medkits as separate items, durability, item trading, arbitrary house-door searching, outdoor mailbox/vehicle looting, randomized global loot tables, live day/night clock, enemy map pins, or additional storage capacity.
-- Reverse transfer (moving inventory items **back into** a searched cabinet) is **not required** by the current PRD. The concept's left-pointing arrow is illustrative, not an authorization to implement container storage/deposit mechanics.
 
 ---
 

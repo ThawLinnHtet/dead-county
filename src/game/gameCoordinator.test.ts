@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGameCoordinator } from './gameCoordinator.ts';
-import { project } from './world.ts';
+import { initiallyClosed, project } from './world.ts';
 
 test('a new run starts on unobstructed floor inside House A', () => {
   const game = createGameCoordinator();
@@ -63,7 +63,11 @@ test('the same open doorway connects House A to the street and back', () => {
   const start = game.getState().survivor.position;
   game.setMovement({ x: 1, y: 1 });
 
-  for (let ticks = 0; ticks < 22; ticks += 1) game.step(100);
+  for (let ticks = 0; ticks < 22; ticks += 1) {
+    game.step(100);
+    const target = game.getInteractionTarget();
+    if (target?.kind === 'opening' && target.id === 'house_a_door' && target.closed) game.interact(target);
+  }
   const outside = game.getState();
 
   assert.equal(outside.occupiedHouseId, null);
@@ -80,7 +84,9 @@ test('the same open doorway connects House A to the street and back', () => {
 });
 
 test('occupancy stays stable while the survivor shuffles across the threshold', () => {
-  const game = createGameCoordinator({ position: { x: 13.99, y: 7.7 } });
+  const game = createGameCoordinator({
+    position: { x: 13.99, y: 7.7 }, closedOpeningIds: initiallyClosed.filter((id) => id !== 'house_a_door'),
+  });
   assert.equal(game.getState().occupiedHouseId, 'house_a');
 
   game.setMovement({ x: 2, y: 1 });

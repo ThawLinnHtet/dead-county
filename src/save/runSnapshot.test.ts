@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator.ts';
+import { workshopLock } from '../game/district.ts';
 import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
 import { expandedStock, seedContainers, starterStock } from '../game/items.ts';
-import { starterZombieSpawns, zombieSpawns } from '../game/world.ts';
+import { initiallyClosed, starterZombieSpawns, zombieSpawns } from '../game/world.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
 
 test('Continue preserves the logical house at either side of a doorway threshold', () => {
-  const game = createGameCoordinator({ position: { x: 13.99, y: 7.7 } });
+  const game = createGameCoordinator({
+    position: { x: 13.99, y: 7.7 }, closedOpeningIds: initiallyClosed.filter((id) => id !== 'house_a_door'),
+  });
   game.setMovement({ x: 2, y: 1 });
   const crossing = game.step(25);
   assert.equal(crossing.occupiedHouseId, 'house_a');
@@ -49,6 +52,7 @@ test('schema-one runs migrate without replacing existing loot or encounters', ()
   assert.deepEqual(restored.containers.starter_container, []);
   assert.ok(restored.containers.lot_2_1_cabinet?.some(({ kind }) => kind === 'bandage'));
   assert.equal(restored.survivor.bleeding, false);
+  assert.ok(!restored.closedOpeningIds.includes('house_a_door'));
   assert.equal(restored.zombies.length, zombieSpawns.length);
   assert.ok(restored.zombies.every((actor) => actor.navigationRetry === null));
 });
@@ -67,15 +71,14 @@ test('schema-two migration adds shelter supplies without refilling a previously 
   assert.deepEqual(read.run.snapshot.containers[cabinet]?.map(({ kind }) => kind), ['backpack', 'door_wedge']);
 });
 
-test('schema three preserves an equipped backpack, wedged door and unarmed shove through Continue', () => {
+test('the current schema preserves equipped gear and migrates schema three with empty pack storage', () => {
   const base = captureRun(createGameCoordinator({ position: { x: 13.3, y: 8.28 } }));
   const cabinet = 'house_b_living_cabinet';
   const items = base.containers[cabinet]!;
   const backpack = items.find(({ kind }) => kind === 'backpack')!;
   const wedge = items.find(({ kind }) => kind === 'door_wedge')!;
-  const door = 'house_a_door';
   const game = restoreGameCoordinator({
-    ...base, closedOpeningIds: [...base.closedOpeningIds!, door],
+    ...base,
     containers: { ...base.containers, [cabinet]: items.filter((item) => item !== backpack && item !== wedge) },
     survivor: { ...base.survivor, inventory: [backpack, wedge, ...base.survivor.inventory.slice(2)] },
   });
@@ -93,6 +96,22 @@ test('schema three preserves an equipped backpack, wedged door and unarmed shove
   const continued = restoreGameCoordinator(read.run.snapshot);
   assert.deepEqual(continued.step(60), game.step(60));
 
+  const {
+    packs: _packs, sleep: _sleep, lockedDoorIds: _locks, containers, survivor: { fatigue: _fatigue, ...oldSurvivor }, ...rest
+  } = saved;
+  const oldContainers = {
+    ...containers, [workshopLock.keyCabinetId]: containers[workshopLock.keyCabinetId]!.filter(({ kind }) => kind !== workshopLock.keyKind),
+  };
+  const legacy = inspectSaveRecord({
+    ...record, schemaVersion: 3, run: { id: runId, snapshot: { ...rest, containers: oldContainers, survivor: oldSurvivor } },
+  });
+  assert.equal(legacy.kind, 'ready');
+  assert.equal(legacy.run.snapshot.survivor.equippedPackId, backpack.id);
+  assert.equal(legacy.run.snapshot.survivor.fatigue, 0);
+  assert.deepEqual(legacy.run.snapshot.packs, {});
+  assert.equal(legacy.run.snapshot.sleep, null);
+  assert.deepEqual(legacy.run.snapshot.lockedDoorIds, []);
+
   const invalid = { ...saved, doorDefenses: { ...saved.doorDefenses, unknown: { wedged: true, pressureMs: 0 } } };
   assert.equal(inspectSaveRecord(saveRecord(7, { id: runId, snapshot: invalid })).kind, 'damaged');
 });
@@ -100,8 +119,7 @@ test('schema three preserves an equipped backpack, wedged door and unarmed shove
 test('committed saves keep closed entrances, active bleeding and the time left to investigate noise', () => {
   const game = createGameCoordinator({ position: { x: 13.3, y: 8.28 } });
   const door = game.getInteractionTarget();
-  assert.ok(door?.kind === 'opening');
-  assert.deepEqual(game.interact(door), { status: 'opening_changed' });
+  assert.ok(door?.kind === 'opening' && door.closed);
   const base = captureRun(game);
   const [first, ...rest] = base.zombies;
   const snapshot = {

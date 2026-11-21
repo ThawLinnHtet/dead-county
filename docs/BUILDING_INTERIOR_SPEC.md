@@ -24,7 +24,7 @@ Specify the **three playable, single-story suburban houses** that belong to the 
 |---|---|---|
 | Enterable houses | **Exactly 3**: A, B, C | More buildings, multi-floor |
 | Layout | Handcrafted, single-story residential interiors | Procedural interiors |
-| House entry | Walk through fixed, open entrances | Locked doors, opening/closing/breaking doors |
+| House entry | Open a closed, unlocked exterior door with **E**, then walk through. Zombies can force a door during pursuit. | Locks and keys |
 | World/camera | Same isometric world, same following camera; **no scene swap/teleport/load** | Dedicated interior scenes if later expressly approved |
 | Roof | Hide/fade occupied house roof automatically | Complex cinematic roof systems |
 | Foreground walls | Fade/hide only what blocks player readability | Destructible walls |
@@ -45,9 +45,9 @@ Use stable identifiers `house_a`, `house_b`, `house_c`. These are **roles and vi
 
 - **Exterior:** weathered light beige/cream siding, aged warm-brown pitched roof, modest porch, cleanest readable entry among the three houses; modest fence/yard.
 - **Interior:** compact living area, small kitchen, sleeping area and optional tiny washroom where footprint allows; sparse domestic clutter; warm wood and faded neutral materials.
-- **Gameplay:** player spawns on an unobstructed **interior** walkable cell. Roof starts hidden because the player is already inside. A clear route to the open front entrance is required.
+- **Gameplay:** player spawns on an unobstructed **interior** walkable cell. Roof starts hidden because the player is already inside. A clear route leads to the closed front door.
 - **Supplies.** Designate one ordinary mapped container on the starter route. Its authored fresh-run contents include exactly one Baseball Bat and at least one Water Bottle for either survivor. A newcomer can obtain both there without searching any other container. Other House A containers may hold optional supplies from the existing catalog.
-- **Opening safety.** Frame a short, readable route from the initial position to the starter container. Initial zombie positions and wander destinations leave enough time for a newcomer to walk to it, search it, take the bat and equip it. The entrance admits ordinary wandering and pursuing zombies from the first active step.
+- **Opening safety.** Frame a short, readable route from the initial position to the starter container. Initial zombie positions and wander destinations leave enough time for a newcomer to walk to it, search it, take the bat and equip it. Zombies simulate from the first active step and can use the entrance once open.
 
 #### House A opening playtest
 
@@ -91,8 +91,8 @@ Distinct houses use exterior material/roof colors, yard/porch treatment, arrange
 
 ### 4.1 Walk-in flow
 
-1. Player approaches a **fixed, visibly open** doorway using WASD; camera follows normally.
-2. Player walks through that doorway on a continuous **walkable collision/navigation path**. **Do not require `E` to enter.**
+1. Player approaches the doorway using WASD. If the door is closed, **E** opens it.
+2. Player walks through the doorway on a continuous **walkable collision/navigation path**.
 3. Player's logical position enters the house's registered `interiorZone` (or equivalent collision-independent trigger).
 4. The matching house **roof group hides or smoothly fades** and remains concealed while the player occupies that zone. Any near-facing wall that obscures the player may fade selectively.
 5. Player continues moving inside using exactly the same controls, camera and simulation. No loading panel, world teleport, top-down switch, camera cut, or special indoor gameplay mode.
@@ -317,7 +317,7 @@ For the implementation plan, B1–B4 belong primarily in **M1 Foundation**, B5 i
 ### E. Save and scope
 
 - [ ] Saving inside a house and reloading restores position, loot state, zombie state and appropriate roof visibility.
-- [ ] MVP contains no locked doors, second floors, firearms/ammunition, crafting, day/night cycle, interior fog of war or separate interior scenes.
+- [ ] The starter houses begin unlocked. Cedar Workshop is the optional locked building in the expanded neighborhood.
 - [ ] Implementation uses original or properly licensed assets matching `ART_DIRECTION.md`.
 
 ## 12. Open technical decisions (not visual-design blockers)

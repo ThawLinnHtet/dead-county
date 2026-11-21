@@ -4,9 +4,10 @@ import { details, houses, openings, project, roofs, walls } from './world';
 import type { MapObject, WorldRect } from './world';
 
 const wallHeight = 68;
-const cutawayHeight = 11;
+const cutawayHeight = 14;
 type Art = Phaser.GameObjects.Graphics;
 type HouseOccluder = { art: Art; houseId: string; bounds: ReturnType<typeof artBounds>; porch?: WorldRect };
+type WallOccluder = Omit<HouseOccluder, 'porch'> & { footprint: WorldRect; partition: boolean };
 
 const creamSiding = {
   boards: [0xa69b82, 0x827b68, 0xa4967c], seam: 0x585448, highlight: 0xb2a58a,
@@ -51,6 +52,13 @@ const houseMaterials: Readonly<Record<string, { siding: Siding; roof: RoofPalett
 };
 
 export function drawHouse(scene: Phaser.Scene) {
+  const shadows = scene.add.graphics().setDepth(-5250);
+  for (const house of houses) {
+    const { x, y, width, height } = house;
+    shape(shadows, 0x24251c, [at(x + width, y), at(x + width + .67, y + .33),
+      at(x + width + .67, y + height + .33), at(x + .67, y + height + .33), at(x, y + height)], .26);
+    floor(shadows, { x: x - .07, y: y - .07, width: width + .22, height: height + .22 }, 0x2d271c, 0, .32);
+  }
   const ground = scene.add.graphics().setDepth(-5000);
   for (const detail of details) {
     if (detail.type === 'rug') rug(ground, detail);
@@ -68,23 +76,32 @@ export function drawHouse(scene: Phaser.Scene) {
     floor(ground, { x: house.x - .09, y: house.y - .09, width: house.width + .18, height: house.height + .18 }, 0x2b271b, 0, .12);
   }
 
-  const nearWalls: HouseOccluder[] = [];
+  const nearWalls: WallOccluder[] = [];
   const fixedWalls: { art: Art; bounds: ReturnType<typeof artBounds> }[] = [];
   for (const wall of walls) {
     const house = houses.find((candidate) => wall.name.startsWith(candidate.name + '_'));
     const front = house && (wall.x > house.x + house.width - .3 || wall.y > house.y + house.height - .3);
-    const depth = nearDepth(wall);
     const siding = (house && houseMaterials[house.name]?.siding) ?? creamSiding;
-    const base = scene.add.graphics().setDepth(depth);
-    const bounds = artBounds(wall, wallHeight);
-    fixedWalls.push({ art: base, bounds });
-    if (front) {
-      paintWall(base, wall, cutawayHeight, 0, siding);
+    const partition = wall.type === 'partition';
+    if (!house || (!front && !partition)) {
+      const art = scene.add.graphics().setDepth(nearDepth(wall));
+      paintWall(art, wall, wallHeight, 0, siding);
+      fixedWalls.push({ art, bounds: artBounds(wall, wallHeight) });
+      continue;
+    }
+    // Local depth keeps the distant end of a long wall from covering actors
+    // who are already standing in front of its near face.
+    const rise = partition ? 32 : wallHeight;
+    const spans = partition ? wallSpans(wall) : wallSpans(wall, wallWindows(wall));
+    for (const { footprint, window } of spans) {
+      const depth = nearDepth(footprint);
+      const base = scene.add.graphics().setDepth(depth);
       const upper = scene.add.graphics().setDepth(depth + .02);
-      paintWall(upper, wall, wallHeight - cutawayHeight, cutawayHeight, siding);
-      nearWalls.push({ art: upper, houseId: house.name, bounds });
-    } else {
-      paintWall(base, wall, wall.type === 'partition' ? 28 : wallHeight, 0, siding);
+      paintWall(base, footprint, cutawayHeight, 0, siding, []);
+      stroke(base, siding.trim, wallEdge(footprint, cutawayHeight), 1, .8);
+      paintWall(upper, footprint, rise - cutawayHeight, cutawayHeight, siding, window ? [window] : []);
+      fixedWalls.push({ art: base, bounds: artBounds(footprint, cutawayHeight) });
+      nearWalls.push({ art: upper, houseId: house.name, footprint, partition, bounds: artBounds(footprint, rise) });
     }
   }
 
@@ -155,12 +172,13 @@ function drawDoor(scene: Phaser.Scene, opening: MapObject) {
   stroke(cracks, 0x302016, [face(.78, 25), face(.60, 19), face(.62, 16), face(.48, 10)], 2.7);
   stroke(cracks, 0xe2ad70, [face(.78, 32), face(.63, 35), face(.68, 40), face(.53, 47)], 1.4);
 
-  // Swing the same leaf ninety degrees inwards from the hinge jamb.
+  // Hold the wide-open leaf against the wall on the hinge side. The actual
+  // walkable passage and the lane beside it remain visibly clear.
   const open = alongY
-    ? { x: x + leaf.width - leaf.height, y: leaf.y, width: leaf.height, height: leaf.width }
-    : { x: leaf.x, y: y + leaf.height - leaf.width, width: leaf.height, height: leaf.width };
-  const openLeaf = scene.add.graphics().setDepth(nearDepth(open));
-  paintDoorLeaf(openLeaf, open, !alongY, true);
+    ? { x: x + width, y: leaf.y - leaf.height, width: .07, height: leaf.height }
+    : { x: leaf.x - leaf.width, y: y + height, width: leaf.width, height: .07 };
+  const openLeaf = scene.add.graphics().setDepth(nearDepth(open) + .025);
+  paintDoorLeaf(openLeaf, open, alongY, true);
   return { id: opening.name, panel, openLeaf, damage: { scuffs, cracks } };
 }
 
@@ -285,8 +303,47 @@ function paintPorchCanopy(art: Art, rect: WorldRect) {
   floor(art, { x: middle - .18, y: front + .005, width: .35, height: .01 }, 0x706f68, eave + 7);
 }
 
+function wallWindows(wall: WorldRect) {
+  const length = Math.max(wall.width, wall.height);
+  if (length < 1.75) return [];
+  const count = length > 4 ? 2 : 1;
+  return Array.from({ length: count }, (_, index) => length * (index + 1) / (count + 1));
+}
+
+function wallSpans(wall: WorldRect, windows: readonly number[] = []) {
+  const vertical = wall.height > wall.width;
+  const length = vertical ? wall.height : wall.width;
+  const spans: { footprint: WorldRect; window?: number }[] = [];
+  let start = 0;
+  function append(end: number, window = false) {
+    if (end - start < 1e-6) return;
+    const span = end - start;
+    const footprint = vertical
+      ? { ...wall, y: wall.y + start, height: span }
+      : { ...wall, x: wall.x + start, width: span };
+    spans.push({ footprint, window: window ? span / 2 : undefined });
+    start = end;
+  }
+  function fillTo(end: number) {
+    const count = Math.ceil((end - start) / .70);
+    const segment = (end - start) / count;
+    for (let i = 0; i < count; i += 1) append(i === count - 1 ? end : start + segment);
+  }
+  for (const center of windows) {
+    fillTo(center - .55);
+    append(center + .55, true);
+  }
+  fillTo(length);
+  return spans;
+}
+
+function wallEdge({ x, y, width, height }: WorldRect, z: number) {
+  return width > height ? [at(x, y + height, z), at(x + width, y + height, z)]
+    : [at(x + width, y, z), at(x + width, y + height, z)];
+}
+
 function paintWall(
-  art: Art, wall: MapObject, rise: number, base: number, siding: Siding,
+  art: Art, wall: WorldRect, rise: number, base: number, siding: Siding, windows = wallWindows(wall),
 ): void {
   box(art, wall, rise, siding.boards, base);
   const vertical = wall.height > wall.width;
@@ -304,10 +361,9 @@ function paintWall(
     stroke(art, siding.sill, [near(0, 2), near(length, 2)], 3);
   }
 
-  if (rise < 35 || length < 1.75) return;
-  const count = length > 4 ? 2 : 1;
-  for (let i = 0; i < count; i += 1) {
-    const start = length * (i + 1) / (count + 1) - .42;
+  if (rise < 35) return;
+  for (const center of windows) {
+    const start = center - .42;
     const end = start + .84;
     const window = (l: number, r: number, bottom: number, top: number, color: number) =>
       shape(art, color, [near(l, bottom), near(r, bottom), near(r, top), near(l, top)]);

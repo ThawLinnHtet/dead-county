@@ -1,15 +1,17 @@
 import type { GameCoordinator, GameSnapshot } from '../game/gameCoordinator.ts';
 import { batConfig, shoveConfig } from '../game/combat.ts';
 import type { AttackState } from '../game/combat.ts';
-import { authoredStock, expandedStock, seedContainers, starterStock } from '../game/items.ts';
+import { workshopLock } from '../game/district.ts';
+import { authoredStock, backpackSlots, containerSlots, expandedStock, reachableBeds, seedContainers, starterStock } from '../game/items.ts';
 import type { ItemInstance } from '../game/items.ts';
 import { doorResistance } from '../game/shelter.ts';
-import { canOccupy, houses, initiallyClosed, mapHeight, mapWidth, openings, starterZombieSpawns, zombieSpawns } from '../game/world.ts';
+import { canOccupy, contains, hasLineOfSight, houses, mapHeight, mapWidth, openings, starterZombieSpawns, zombieSpawns } from '../game/world.ts';
+import { maximumSleepMs } from '../game/survival.ts';
 import type { MapObject, WorldPoint } from '../game/world.ts';
 import { createZombies, zombieConfig } from '../game/zombie.ts';
 import type { ZombieState } from '../game/zombie.ts';
 
-export const saveSchemaVersion = 3;
+export const saveSchemaVersion = 5;
 export const saveWorldVersion = 'neighborhood-2';
 export const slotKey = 'local';
 
@@ -40,8 +42,11 @@ const initialContainers = seedContainers(authoredStock);
 const starterContainers = seedContainers(starterStock);
 const expandedContainers = seedContainers(expandedStock);
 const authoredItems = new Map(Object.values(initialContainers).flat().map((item) => [item.id, item.kind]));
+const preLockItems = new Map([...authoredItems].filter(([, kind]) => kind !== workshopLock.keyKind));
 const starterItems = new Map(Object.values(starterContainers).flat().map((item) => [item.id, item.kind]));
 const expandedItems = new Map(Object.values(expandedContainers).flat().map((item) => [item.id, item.kind]));
+// Schema one had no door collision. Preserve walkable thresholds and actor positions when loading it.
+const legacyClosedOpeningIds = openings.filter(({ type }) => type === 'window').map(({ name }) => name);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -116,13 +121,19 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
   if (!isRecord(value) || !finite(value.activeTimeMs) || !isRecord(value.survivor)) return false;
   const legacy = schema === 1;
   const older = schema < 3;
-  const { survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds, doorDefenses } = value;
+  const {
+    survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId,
+    closedOpeningIds, lockedDoorIds, doorDefenses, packs, sleep,
+  } = value;
   if (!legacy && (!Array.isArray(closedOpeningIds) || closedOpeningIds.length > openings.length
       || closedOpeningIds.length !== new Set(closedOpeningIds).size
       || !closedOpeningIds.every((id) => openings.some(({ name }) => name === id)))) return false;
   const closed = legacy ? [] : openings.filter(({ name }) => (closedOpeningIds as string[]).includes(name));
+  if (schema >= 5 && (!Array.isArray(lockedDoorIds) || lockedDoorIds.length > 1
+    || (lockedDoorIds.length === 1 && (lockedDoorIds[0] !== workshopLock.doorId
+      || !closed.some(({ name }) => name === workshopLock.doorId))))) return false;
   const stockByContainer = legacy ? starterContainers : older ? expandedContainers : initialContainers;
-  const allowedItems = legacy ? starterItems : older ? expandedItems : authoredItems;
+  const allowedItems = legacy ? starterItems : older ? expandedItems : schema < 5 ? preLockItems : authoredItems;
   if (!older && (!isRecord(doorDefenses) || Object.keys(doorDefenses).length > closed.length
     || !Object.entries(doorDefenses).every(([id, defense]) =>
       closed.some((door) => door.name === id && door.type === 'door') && isRecord(defense)
@@ -134,6 +145,7 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
   if (!(survivor.characterId === 'survivor_male' || survivor.characterId === 'survivor_female')
       || !point(survivor.position) || !canOccupy(survivor.position, undefined, closed)
       || (!legacy && typeof survivor.bleeding !== 'boolean')
+      || (schema >= 4 && !finite(survivor.fatigue, 0, 100))
       || !finite(survivor.health, Number.MIN_VALUE, 100) || !finite(survivor.stamina, 0, 100) || !finite(survivor.hunger, 0, 100) || !finite(survivor.thirst, 0, 100)
       || !(survivor.lastBiteAtMs === null || finite(survivor.lastBiteAtMs, 0, activeTimeMs))
       || !finite(survivor.walkDistance) || !direction(survivor.facing) || typeof survivor.facingLeft !== 'boolean'
@@ -161,13 +173,30 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
 
   for (const [id, stock] of Object.entries(stockByContainer)) {
     const items = containers[id];
-    if (!Array.isArray(items) || items.length > stock.length) return false;
+    if (!Array.isArray(items) || items.length > (schema >= 4 ? containerSlots : stock.length)) return false;
     for (const item of items) {
-      if (!claim(item) || !stock.some((authored) => authored.id === item.id)) return false;
+      if (!claim(item) || (schema < 4 && !stock.some((authored) => authored.id === item.id))) return false;
     }
   }
   for (const drop of droppedItems) {
     if (!isRecord(drop) || !claim(drop.item) || !point(drop.position) || !canOccupy(drop.position, .17, closed)) return false;
+  }
+  if (schema >= 4) {
+    if (Object.keys(containers).length !== Object.keys(stockByContainer).length || !isRecord(packs)) return false;
+    for (const [id, items] of Object.entries(packs)) {
+      if (!seen.has(id) || allowedItems.get(id) !== 'backpack' || !Array.isArray(items) || items.length > backpackSlots) return false;
+      for (const item of items) {
+        if (!claim(item) || item.kind === 'backpack') return false;
+      }
+    }
+    if (sleep !== null) {
+      const position = survivor.position;
+      const houseId = houses.find((house) => contains(house, position))?.name ?? null;
+      if (!isRecord(sleep) || survivor.bleeding || survivor.attack !== null
+        || !finite(sleep.remainingMs, Number.MIN_VALUE, maximumSleepMs)
+        || !reachableBeds(position, houseId, (from, to) => hasLineOfSight(from, to, closed))
+          .some(({ object }) => object.name === sleep.bedId)) return false;
+    }
   }
   for (const [index, zombie] of zombies.entries()) {
     if (!isZombie(zombie, index, activeTimeMs, closed, schema)) return false;
@@ -176,9 +205,15 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
 }
 
 export function captureRun(coordinator: GameCoordinator): GameSnapshot {
-  const { survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds, doorDefenses } = coordinator.getState();
-  const { gait: _gait, ...savedSurvivor } = survivor;
-  return { survivor: savedSurvivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds, doorDefenses };
+  const {
+    survivor, containers, packs, sleep, droppedItems, zombies, activeTimeMs, occupiedHouseId,
+    closedOpeningIds, lockedDoorIds, doorDefenses,
+  } = coordinator.getState();
+  const { gait: _gait, steppingBack: _steppingBack, ...savedSurvivor } = survivor;
+  return {
+    survivor: savedSurvivor, containers, packs, sleep, droppedItems, zombies, activeTimeMs, occupiedHouseId,
+    closedOpeningIds, lockedDoorIds, doorDefenses,
+  };
 }
 
 export function saveRecord(revision: number, run: SavedRun | null): SaveRecord {
@@ -212,8 +247,10 @@ function copyBehavior(behavior: ZombieState['behavior']): ZombieState['behavior'
   }
 }
 
-function copySnapshot({ survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId, closedOpeningIds, doorDefenses }: GameSnapshot,
-  schema: number): GameSnapshot {
+function copySnapshot({
+  survivor, containers, packs, sleep, droppedItems, zombies, activeTimeMs, occupiedHouseId,
+  closedOpeningIds, lockedDoorIds, doorDefenses,
+}: GameSnapshot, schema: number): GameSnapshot {
   const legacy = schema === 1;
   const older = schema < 3;
   const oldItems = legacy ? starterItems : expandedItems;
@@ -226,21 +263,25 @@ function copySnapshot({ survivor, containers, droppedItems, zombies, activeTimeM
   return {
     activeTimeMs,
     occupiedHouseId,
-    closedOpeningIds: [...(legacy ? initiallyClosed : closedOpeningIds ?? [])],
+    closedOpeningIds: [...(legacy ? legacyClosedOpeningIds : closedOpeningIds ?? [])],
+    lockedDoorIds: schema >= 5 ? [...lockedDoorIds!] : [],
     doorDefenses: older ? {} : Object.fromEntries(Object.entries(doorDefenses!).map(([id, defense]) => [
       id, { pressureMs: defense!.pressureMs, wedged: defense!.wedged },
     ])),
     survivor: {
       characterId, position: copyPoint(position), health, stamina, hunger, thirst,
+      fatigue: schema >= 4 ? survivor.fatigue : 0,
       inventory: inventory.map((item) => item ? copyItem(item) : null), equippedWeaponId,
       equippedPackId: older ? null : survivor.equippedPackId,
       facing: copyPoint(facing), facingLeft, attack: copyAttack(attack), lastBiteAtMs, walkDistance, bleeding: legacy ? false : bleeding,
     },
     containers: Object.fromEntries(Object.entries(initialContainers).map(([id, authored]) => {
       const items = Object.hasOwn(knownContainers, id) ? containers[id]! : [];
-      const newItems = older ? authored.filter((item) => !oldItems.has(item.id)) : [];
+      const newItems = older ? authored.filter((item) => preLockItems.has(item.id) && !oldItems.has(item.id)) : [];
       return [id, [...items, ...newItems].map(copyItem)];
     })),
+    packs: schema >= 4 ? Object.fromEntries(Object.entries(packs!).map(([id, items]) => [id, items.map(copyItem)])) : {},
+    sleep: schema >= 4 && sleep ? { bedId: sleep.bedId, remainingMs: sleep.remainingMs } : null,
     droppedItems: droppedItems.map((drop) => ({ item: copyItem(drop.item), position: copyPoint(drop.position) })),
     zombies: [...zombies, ...expandedZombies].map((zombie) => {
       const {

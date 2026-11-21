@@ -1,16 +1,17 @@
 import { advanceAttack, aimFrom, batConfig, beginAttack, selectMeleeTarget, shoveConfig } from './combat.ts';
 import type { AttackState } from './combat.ts';
+import { workshopLock } from './district.ts';
 import { actorRadius, contains, createTraversal, hasLineOfSight, houses, initiallyClosed, openings, overlapsOpening, survivorSpawn, unproject } from './world.ts';
 import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
 import {
-  authoredStock, baseCarryCapacity, carriedLoad, findDropPosition, inventoryQuickSlotCount, itemDefinitions,
-  reachableContainers, reachableDrops, seedContainers,
+  authoredStock, backpackSlots, baseCarryCapacity, carriedLoad, containerSlots, findDropPosition, inventoryQuickSlotCount,
+  itemDefinitions, itemWeight, reachableBeds, reachableContainers, reachableDrops, seedContainers,
 } from './items.ts';
 import type { ConsumableStat, ContainerContents, ContainerStock, DroppedItem, ItemInstance } from './items.ts';
 import { createZombies, restoreZombies, zombieConfig } from './zombie.ts';
 import type { WorldSound, ZombieSpawn, ZombieState } from './zombie.ts';
-import { getSurvivalStep, neighborhoodDarkness } from './survival.ts';
+import { fatiguePerMs, getNeedWarning, getSurvivalStep, neighborhoodDarkness, plannedSleepMs, sleepRecoveryPerMs, sleepSpeed } from './survival.ts';
 import { advanceDoorPressure, doorStrain, findClosedDoorApproach, openingCenter } from './shelter.ts';
 import type { DoorDefenses, DoorStrain } from './shelter.ts';
 
@@ -31,10 +32,12 @@ export interface GameState {
     readonly stamina: number;
     readonly hunger: number;
     readonly thirst: number;
+    readonly fatigue: number;
     readonly inventory: readonly (ItemInstance | null)[];
     readonly equippedWeaponId: string | null;
     readonly equippedPackId: string | null;
     readonly gait: 'idle' | 'sneak' | 'walk' | 'sprint';
+    readonly steppingBack: boolean;
     readonly facingLeft: boolean;
     readonly facing: WorldPoint;
     readonly attack: AttackState | null;
@@ -42,22 +45,32 @@ export interface GameState {
   };
   readonly zombies: readonly ZombieState[];
   readonly containers: ContainerContents;
+  readonly packs: ContainerContents;
+  readonly sleep: { readonly bedId: string; readonly remainingMs: number } | null;
+  readonly restNotice: 'danger' | 'needs' | 'awake' | null;
   readonly droppedItems: readonly DroppedItem[];
   readonly occupiedHouseId: string | null;
   readonly closedOpeningIds: readonly string[];
+  readonly lockedDoorIds: readonly string[];
   readonly doorDefenses: DoorDefenses;
   readonly activeTimeMs: number;
   readonly gameOver: GameOverResult | null;
 }
 
 export interface GameSnapshot {
-  readonly survivor: Omit<GameState['survivor'], 'gait' | 'equippedPackId'> & { readonly equippedPackId?: string | null };
+  readonly survivor: Omit<GameState['survivor'], 'gait' | 'steppingBack' | 'equippedPackId' | 'fatigue'> & {
+    readonly equippedPackId?: string | null;
+    readonly fatigue?: number;
+  };
   readonly zombies: GameState['zombies'];
   readonly containers: ContainerContents;
+  readonly packs?: ContainerContents;
+  readonly sleep?: GameState['sleep'];
   readonly droppedItems: GameState['droppedItems'];
   readonly activeTimeMs: number;
   readonly occupiedHouseId?: string | null;
   readonly closedOpeningIds?: readonly string[];
+  readonly lockedDoorIds?: readonly string[];
   readonly doorDefenses?: DoorDefenses;
 }
 
@@ -80,6 +93,7 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   getOpenContainer(): MapObject | null;
   search(containerId: string): boolean;
   transferItem(containerId: string, itemId: string): TransferResult;
+  transferStorage(from: StorageLocation, itemId: string, to: StorageLocation): TransferResult;
   moveInventoryItem(from: number, itemId: string, to: number): boolean;
   activateQuickSlot(slot: number, itemId: string): 'equipped' | 'inspect' | 'unavailable';
   toggleMap(): void;
@@ -94,26 +108,31 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
 }
 
 export type InteractionTarget =
-  | { kind: 'container'; id: string; position: WorldPoint; object: MapObject }
-  | { kind: 'opening'; id: string; position: WorldPoint; object: MapObject; closed: boolean; wedged: boolean; strain: DoorStrain }
+  | { kind: 'container'; id: string; position: WorldPoint; object: MapObject; empty: boolean }
+  | { kind: 'bed'; id: string; position: WorldPoint; object: MapObject; sleeping: boolean }
+  | { kind: 'opening'; id: string; position: WorldPoint; object: MapObject; closed: boolean; wedged: boolean; strain: DoorStrain;
+      lock: 'locked' | 'key' | 'inside' | null }
   | { kind: 'drop'; id: string; position: WorldPoint; item: ItemInstance };
 
 type InteractionResult =
-  | { status: 'searched' }
+  | { status: 'searched' | 'sleep_changed' }
   | { status: 'picked_up'; slot: number }
-  | { status: 'opening_changed' | 'opening_blocked' | 'inventory_full' | 'too_heavy' | 'unavailable' };
+  | { status: 'opening_changed' | 'opening_blocked' | 'opening_locked' | 'inventory_full' | 'too_heavy' | 'unavailable' }
+  | { status: 'sleep_blocked'; reason: string };
 
-const interactionPriority = { drop: 0, container: 1, opening: 2 };
+const interactionPriority = { drop: 0, container: 1, opening: 2, bed: 3 };
 
 type UseRejection = { status: 'no_benefit'; reason: string } | { status: 'unavailable' };
 type ItemUse = { status: 'eligible'; stat: ConsumableStat; value: number } | { status: 'eligible'; door: MapObject } | UseRejection;
 type UseResult = { status: 'used'; stat: ConsumableStat; value: number } | { status: 'wedged' } | UseRejection;
 
-type DropResult = { status: 'dropped' | 'cannot_drop' | 'swing_in_progress' | 'too_heavy' | 'unavailable' };
+type DropResult = { status: 'dropped' | 'cannot_drop' | 'swing_in_progress' | 'too_heavy' | 'pack_too_heavy' | 'unavailable' };
 
 type TransferResult =
   | { status: 'transferred'; slot: number }
-  | { status: 'inventory_full' | 'too_heavy' | 'unavailable' };
+  | { status: 'inventory_full' | 'storage_full' | 'too_heavy' | 'unavailable' | 'unequip_first' | 'no_nested_packs' };
+
+export type StorageLocation = { kind: 'inventory' } | { kind: 'pack' | 'container'; id: string };
 
 const movementConfig = {
   walkSpeed: 2.55,
@@ -171,6 +190,7 @@ type FreshRunOptions = {
   characterId?: SurvivorId;
   zombieSpawns?: readonly ZombieSpawn[];
   containerStock?: ContainerStock;
+  closedOpeningIds?: readonly string[];
 };
 
 export function createGameCoordinator(options: FreshRunOptions = {}): GameCoordinator {
@@ -182,8 +202,9 @@ function makeGameCoordinator({
   characterId = 'survivor_male',
   zombieSpawns,
   containerStock = authoredStock,
+  closedOpeningIds = initiallyClosed,
 }: FreshRunOptions, snapshot?: GameSnapshot): GameCoordinator {
-  let closed = openings.filter(({ name }) => (snapshot?.closedOpeningIds ?? initiallyClosed).includes(name));
+  let closed = openings.filter(({ name }) => (snapshot?.closedOpeningIds ?? closedOpeningIds).includes(name));
   const traversal = {
     ...createTraversal(() => closed),
     findClosedDoorApproach: (origin: WorldPoint, target: WorldPoint) => findClosedDoorApproach(closed, origin, target),
@@ -191,7 +212,8 @@ function makeGameCoordinator({
   if (!traversal.canOccupy(position)) throw new Error('The survivor must start on walkable ground');
   const zombies = snapshot ? restoreZombies(snapshot.zombies, snapshot.activeTimeMs, traversal) : createZombies(zombieSpawns, traversal);
   let state: GameState = {
-    survivor: snapshot ? { ...snapshot.survivor, equippedPackId: snapshot.survivor.equippedPackId ?? null, gait: 'idle' } : {
+    survivor: snapshot ? { ...snapshot.survivor, fatigue: snapshot.survivor.fatigue ?? 0,
+      equippedPackId: snapshot.survivor.equippedPackId ?? null, gait: 'idle', steppingBack: false } : {
       characterId,
       position: { ...position },
       health: 100,
@@ -200,10 +222,12 @@ function makeGameCoordinator({
       stamina: 100,
       hunger: 0,
       thirst: 0,
+      fatigue: 0,
       inventory: Array<ItemInstance | null>(12).fill(null),
       equippedWeaponId: null,
       equippedPackId: null,
       gait: 'idle',
+      steppingBack: false,
       facingLeft: false,
       facing: { x: 1, y: 0 },
       attack: null,
@@ -211,9 +235,14 @@ function makeGameCoordinator({
     },
     zombies: zombies.map((zombie) => zombie.getState()),
     containers: snapshot?.containers ?? seedContainers(containerStock),
+    packs: snapshot?.packs ?? {},
+    sleep: snapshot?.sleep ?? null,
+    restNotice: null,
     droppedItems: snapshot?.droppedItems ?? [],
     occupiedHouseId: getHouseAt(position, snapshot?.occupiedHouseId),
     closedOpeningIds: closed.map(({ name }) => name),
+    lockedDoorIds: snapshot ? snapshot.lockedDoorIds ?? []
+      : closedOpeningIds.includes(workshopLock.doorId) ? [workshopLock.doorId] : [],
     doorDefenses: snapshot?.doorDefenses ?? {},
     activeTimeMs: snapshot?.activeTimeMs ?? 0,
     gameOver: null,
@@ -292,19 +321,56 @@ function makeGameCoordinator({
 
   function canCarry(item: ItemInstance) {
     const { inventory, equippedPackId } = state.survivor;
-    const { weight, capacity } = carriedLoad(inventory, equippedPackId);
-    return weight + itemDefinitions[item.kind].weight <= capacity + 1e-9;
+    const { weight, capacity } = carriedLoad(inventory, equippedPackId, state.packs);
+    return weight + itemWeight(item, state.packs) <= capacity + 1e-9;
+  }
+
+  function hasSleepThreat() {
+    return state.zombies.some(({ health, position, attack, behavior }) => {
+      if (health <= 0) return false;
+      const survivor = state.survivor.position;
+      const distance = Math.hypot(position.x - survivor.x, position.y - survivor.y);
+      return (distance <= 5 && traversal.hasLineOfSight(position, survivor))
+        || (distance <= 2.5 && (attack !== null || behavior.kind === 'chase')
+          && getHouseAt(position) === state.occupiedHouseId);
+    });
+  }
+
+  function wakeUp(notice: GameState['restNotice']) {
+    state = { ...state, sleep: null, restNotice: notice };
+  }
+
+  function hasCriticalNeeds() {
+    return getNeedWarning('hunger', state.survivor.hunger) === 'critical'
+      || getNeedWarning('thirst', state.survivor.thirst) === 'critical';
+  }
+
+  function getDoorLock(id: string): Extract<InteractionTarget, { kind: 'opening' }>['lock'] {
+    if (id !== workshopLock.doorId || !state.lockedDoorIds.includes(id)) return null;
+    if (state.occupiedHouseId === workshopLock.houseId) return 'inside';
+    const { inventory, equippedPackId } = state.survivor;
+    const matchesKey = (item: ItemInstance | null) => item?.kind === workshopLock.keyKind;
+    if (inventory.some(matchesKey) || (equippedPackId && state.packs[equippedPackId]?.some(matchesKey))) return 'key';
+    return 'locked';
   }
 
   function interactionCandidates(): { target: InteractionTarget; distance: number }[] {
     if (pause.getPauseState().isPaused || state.gameOver) return [];
+    const beds = reachableBeds(state.survivor.position, state.occupiedHouseId, traversal.hasLineOfSight)
+      .flatMap(({ object, distance }) => state.sleep && state.sleep.bedId !== object.name ? [] : [{
+        target: { kind: 'bed' as const, id: object.name, position: openingCenter(object), object, sleeping: !!state.sleep },
+        distance,
+      }]);
+    if (state.sleep) return beds;
     return [
+      ...beds,
       ...getReachableContainers().map(({ object, distance }) => ({
         target: {
           kind: 'container' as const,
           id: object.name,
           position: { x: object.x + object.width / 2, y: object.y + object.height / 2 },
           object,
+          empty: !state.containers[object.name]!.length,
         },
         distance,
       })),
@@ -320,6 +386,7 @@ function makeGameCoordinator({
         const target = {
           kind: 'opening' as const, id: object.name, position: point, object,
           closed: closed.includes(object), wedged: defense?.wedged ?? false, strain: doorStrain(defense),
+          lock: getDoorLock(object.name),
         };
         return [{ target, distance }];
       }),
@@ -328,7 +395,11 @@ function makeGameCoordinator({
 
   function getInteractionTarget() {
     const candidates = interactionCandidates();
+    const isEmptyStorage = (target: InteractionTarget) => Number(target.kind === 'container' && target.empty);
     candidates.sort((first, second) => {
+      // A cupboard with supplies or an existing entrance takes precedence over empty storage.
+      const emptyDifference = isEmptyStorage(first.target) - isEmptyStorage(second.target);
+      if (emptyDifference) return emptyDifference;
       const difference = first.distance - second.distance;
       if (Math.abs(difference) > 1e-9) return difference;
       if (first.target.kind !== second.target.kind) return interactionPriority[first.target.kind] - interactionPriority[second.target.kind];
@@ -343,6 +414,25 @@ function makeGameCoordinator({
       target.kind === displayed.kind && target.id === displayed.id)?.target;
     if (!target) return { status: 'unavailable' };
 
+    if (target.kind === 'bed') {
+      if (displayed.kind !== 'bed' || target.sleeping !== displayed.sleeping) return { status: 'unavailable' };
+      if (state.sleep) {
+        wakeUp('awake');
+      } else {
+        const reason = state.survivor.attack ? 'Finish your swing first.'
+          : state.survivor.bleeding ? 'Stop the bleeding before sleeping.'
+          : hasSleepThreat() ? 'It is too dangerous to sleep here.'
+          : hasCriticalNeeds() ? 'Eat or drink before sleeping.'
+          : state.survivor.fatigue < 15 ? 'You are too alert to sleep.' : null;
+        if (reason) return { status: 'sleep_blocked', reason };
+        clearMovement();
+        pointerTarget = null;
+        state = { ...state, sleep: { bedId: target.id, remainingMs: plannedSleepMs(state.activeTimeMs) }, restNotice: null };
+      }
+      notify();
+      return { status: 'sleep_changed' };
+    }
+
     if (target.kind === 'container') {
       openContainer = target.object;
       pause.setForegroundPanel('loot');
@@ -350,13 +440,18 @@ function makeGameCoordinator({
     }
     if (target.kind === 'opening') {
       if (displayed.kind !== 'opening' || displayed.closed !== target.closed) return { status: 'unavailable' };
+      if (target.lock === 'locked') return { status: 'opening_locked' };
       if (!target.closed && (overlapsOpening(state.survivor.position, target.object)
           || state.zombies.some((actor) => actor.health > 0 && overlapsOpening(actor.position, target.object))
           || state.droppedItems.some(({ position }) => overlapsOpening(position, target.object, .17)))) return { status: 'opening_blocked' };
       closed = target.closed ? closed.filter((opening) => opening !== target.object) : [...closed, target.object];
       const { [target.id]: _cleared, ...doorDefenses } = state.doorDefenses;
       emitSound({ position: target.position, reach: target.object.type === 'window' ? 4 : 3 });
-      state = { ...state, doorDefenses, closedOpeningIds: closed.map(({ name }) => name), zombies: zombies.map((actor) => actor.getState()) };
+      state = {
+        ...state, doorDefenses, closedOpeningIds: closed.map(({ name }) => name),
+        lockedDoorIds: target.lock ? state.lockedDoorIds.filter((id) => id !== target.id) : state.lockedDoorIds,
+        zombies: zombies.map((actor) => actor.getState()),
+      };
       notify();
       return { status: 'opening_changed' };
     }
@@ -393,6 +488,46 @@ function makeGameCoordinator({
       && (foregroundPanel === 'inventory' || (foregroundPanel === 'loot' && openContainer !== null));
   }
 
+  function transferStorage(from: StorageLocation, itemId: string, to: StorageLocation): TransferResult {
+    const { survivor, packs, containers } = state;
+    function slots(location: StorageLocation): readonly (ItemInstance | null)[] | undefined {
+      switch (location.kind) {
+        case 'inventory': return survivor.inventory;
+        case 'pack': return location.id === survivor.equippedPackId ? packs[location.id] ?? [] : undefined;
+        case 'container': return openContainer?.name === location.id
+          && getReachableContainers().some(({ object }) => object.name === location.id) ? containers[location.id] : undefined;
+      }
+    }
+    if (!isInventoryAvailable() || from.kind === to.kind) return { status: 'unavailable' };
+    const source = slots(from);
+    const destination = slots(to);
+    const index = source?.findIndex((item) => item?.id === itemId) ?? -1;
+    const item = source?.[index];
+    if (!source || !destination || !item) return { status: 'unavailable' };
+    if (itemId === survivor.equippedPackId || itemId === survivor.equippedWeaponId) return { status: 'unequip_first' };
+    if (to.kind === 'pack' && item.kind === 'backpack') return { status: 'no_nested_packs' };
+    const slot = to.kind === 'inventory' ? destination.indexOf(null) : destination.length;
+    if (slot < 0) return { status: 'inventory_full' };
+    if ((to.kind === 'pack' && slot >= backpackSlots) || (to.kind === 'container' && slot >= containerSlots)) {
+      return { status: 'storage_full' };
+    }
+    if (from.kind === 'container' && !canCarry(item)) return { status: 'too_heavy' };
+
+    const next = {
+      inventory: [...survivor.inventory],
+      packs: { ...packs },
+      containers: { ...containers },
+    };
+    if (from.kind === 'inventory') next.inventory[index] = null;
+    else (from.kind === 'pack' ? next.packs : next.containers)[from.id] =
+      source.filter((entry): entry is ItemInstance => entry !== null && entry.id !== itemId);
+    if (to.kind === 'inventory') next.inventory[slot] = item;
+    else (to.kind === 'pack' ? next.packs : next.containers)[to.id] = [...destination.filter((entry) => entry !== null), item];
+    state = { ...state, survivor: { ...survivor, inventory: next.inventory }, packs: next.packs, containers: next.containers };
+    notify();
+    return { status: 'transferred', slot };
+  }
+
   function changeEquippedWeapon(itemId: string | null) {
     if (itemId === state.survivor.equippedWeaponId) return;
     state = { ...state, survivor: { ...state.survivor, equippedWeaponId: itemId } };
@@ -425,15 +560,16 @@ function makeGameCoordinator({
   function advanceSimulation({ elapsedMs: deltaMs, needDamage, hunger, thirst }: ReturnType<typeof getSurvivalStep>) {
     const previous = state.survivor;
     const livingBodies = state.zombies.filter(({ health }) => health > 0);
-    const canStep = (from: WorldPoint, to: WorldPoint) => traversal.canOccupy(to) && livingBodies.every(({ position }) => {
+    const canStep = (from: WorldPoint, to: WorldPoint) => traversal.canTraverse(from, to) && livingBodies.every(({ position }) => {
       const separation = Math.hypot(to.x - position.x, to.y - position.y);
       // Permit separation if a saved or approaching body already overlaps the survivor.
       return separation >= 2 * actorRadius || separation > Math.hypot(from.x - position.x, from.y - position.y);
     });
     const { walkSpeed, sprintSpeed, readyForwardSpeed, readySideSpeed, readyBackSpeed } = movementConfig;
-    const { exertion } = carriedLoad(previous.inventory, previous.equippedPackId);
+    const { exertion } = carriedLoad(previous.inventory, previous.equippedPackId, state.packs);
     const sprintDrain = movementConfig.sprintDrainPerMs * (1 + .45 * exertion);
-    const recovery = movementConfig.staminaRecoveryPerMs * (1 - .30 * exertion);
+    const recovery = movementConfig.staminaRecoveryPerMs * (1 - .30 * exertion)
+      * (1 - .45 * Math.max(0, previous.fatigue - 35) / 65);
     const timeToExhaustion = previous.stamina / sprintDrain;
     const shoving = previous.attack?.kind === 'shove';
     const timing = shoving ? shoveConfig : batConfig;
@@ -497,6 +633,7 @@ function makeGameCoordinator({
         lastBiteAtMs: biteDamage > 0 ? activeTimeMs : previous.lastBiteAtMs,
         bleeding: previous.bleeding || biteDamage > 0,
         gait: traveled === 0 || health === 0 ? 'idle' : sprinting && !exhausted ? 'sprint' : sneakHeld ? 'sneak' : 'walk',
+        steppingBack: traveled > 0 && ready && heading < -.3,
         facing,
         facingLeft: Math.abs(facing.x - facing.y) > 0.0001 ? facing.x < facing.y : previous.facingLeft,
         attack: health > 0 ? attack : null,
@@ -504,14 +641,32 @@ function makeGameCoordinator({
         stamina,
         hunger,
         thirst,
+        fatigue: state.sleep
+          ? Math.max(0, previous.fatigue - deltaMs * sleepRecoveryPerMs)
+          : Math.min(100, previous.fatigue + deltaMs * fatiguePerMs),
       },
       zombies: zombieStates,
       doorDefenses: doors.defenses,
       closedOpeningIds: openingsChanged ? closed.map(({ name }) => name) : state.closedOpeningIds,
+      lockedDoorIds: openingsChanged ? state.lockedDoorIds.filter((id) => closed.some(({ name }) => name === id)) : state.lockedDoorIds,
       occupiedHouseId: getHouseAt(nextPosition, state.occupiedHouseId),
       activeTimeMs,
       gameOver,
+      restNotice: traveled > 0 ? null : state.restNotice,
     };
+    if (state.sleep) {
+      const remainingMs = state.sleep.remainingMs - deltaMs;
+      if (gameOver || biteDamage > 0 || hasSleepThreat()
+        || [...doors.breached].some((door) => door.name.startsWith(state.occupiedHouseId + '_'))) {
+        wakeUp('danger');
+      } else if (hasCriticalNeeds()) {
+        wakeUp('needs');
+      } else if (remainingMs <= 0) {
+        wakeUp('awake');
+      } else {
+        state = { ...state, sleep: { ...state.sleep, remainingMs } };
+      }
+    }
     if (gameOver) {
       clearMovement();
       openContainer = null;
@@ -522,15 +677,18 @@ function makeGameCoordinator({
     if (pause.getPauseState().isPaused || state.gameOver) return state;
     if (!Number.isFinite(deltaMs) || deltaMs <= 0) return state;
 
-    let remaining = deltaMs;
+    const sleeping = !!state.sleep;
+    let remaining = sleeping ? Math.min(1600, deltaMs * sleepSpeed) : deltaMs;
     while (remaining > 0 && !state.gameOver) {
       let elapsed = Math.min(remaining, state.survivor.attack?.remainingMs ?? remaining);
+      if (state.sleep) elapsed = Math.min(elapsed, state.sleep.remainingMs, 50);
       for (const { attack } of state.zombies) {
         if (attack) elapsed = Math.min(elapsed, attack.remainingMs);
       }
       const survivalStep = getSurvivalStep(state.survivor, elapsed);
       advanceSimulation(survivalStep);
       remaining -= survivalStep.elapsedMs;
+      if (sleeping && !state.sleep) break;
     }
     if (!ready) pointerTarget = null;
     notify();
@@ -554,7 +712,7 @@ function makeGameCoordinator({
       return () => { listeners.delete(listener); };
     },
     setMovement(screenDirection, sprintHeld = false, crouchHeld = false) {
-      if (pause.getPauseState().isPaused || state.gameOver) return;
+      if (pause.getPauseState().isPaused || state.gameOver || state.sleep) return;
       const input = unproject(screenDirection);
       const magnitude = Math.hypot(input.x, input.y);
       direction = Number.isFinite(magnitude) && magnitude > 0
@@ -567,21 +725,21 @@ function makeGameCoordinator({
     },
     setReady(held) {
       if (!held && ready) pointerTarget = null;
-      ready = held && !pause.getPauseState().isPaused && !state.gameOver;
+      ready = held && !pause.getPauseState().isPaused && !state.gameOver && !state.sleep;
     },
     isReady: () => ready,
     isSneaking: () => sneakHeld,
     canSee,
     listenAt,
     aimAt(target) {
-      if (pause.getPauseState().isPaused || state.gameOver || state.survivor.attack) return;
+      if (pause.getPauseState().isPaused || state.gameOver || state.sleep || state.survivor.attack) return;
       if (target && (!Number.isFinite(target.x) || !Number.isFinite(target.y))) return;
       pointerTarget = target;
     },
     step,
     startBatSwing(target) {
       const { survivor } = state;
-      if (pause.getPauseState().isPaused || !survivor.equippedWeaponId || survivor.attack || state.gameOver
+      if (pause.getPauseState().isPaused || !survivor.equippedWeaponId || survivor.attack || state.gameOver || state.sleep
           || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return false;
 
       const facing = aimFrom(survivor.position, target)
@@ -602,7 +760,7 @@ function makeGameCoordinator({
     },
     startShove() {
       const { survivor } = state;
-      if (pause.getPauseState().isPaused || state.gameOver || survivor.attack || survivor.stamina < shoveConfig.staminaCost) return false;
+      if (pause.getPauseState().isPaused || state.gameOver || state.sleep || survivor.attack || survivor.stamina < shoveConfig.staminaCost) return false;
       const facing = (pointerTarget && aimFrom(survivor.position, pointerTarget)) ?? survivor.facing;
       if (!ready) pointerTarget = null;
       state = { ...state, survivor: {
@@ -618,35 +776,17 @@ function makeGameCoordinator({
     interact,
     getSearchTarget() {
       const target = getInteractionTarget();
-      return target?.kind === 'container' ? target.object : null;
+      return target?.kind === 'container' && !target.empty ? target.object : null;
     },
     getOpenContainer: () => openContainer,
     search(containerId) {
       const target = getInteractionTarget();
-      return target?.kind === 'container' && target.id === containerId && interact(target).status === 'searched';
+      return target?.kind === 'container' && !target.empty && target.id === containerId && interact(target).status === 'searched';
     },
     transferItem(containerId, itemId) {
-      if (!isInventoryAvailable() || openContainer?.name !== containerId
-          || !getReachableContainers().some(({ object }) => object.name === containerId)) {
-        return { status: 'unavailable' };
-      }
-      const items = state.containers[containerId]!;
-      const itemIndex = items.findIndex((item) => item.id === itemId);
-      if (itemIndex < 0) return { status: 'unavailable' };
-      const slot = state.survivor.inventory.indexOf(null);
-      if (slot < 0) return { status: 'inventory_full' };
-      if (!canCarry(items[itemIndex]!)) return { status: 'too_heavy' };
-
-      const inventory = [...state.survivor.inventory];
-      inventory[slot] = items[itemIndex]!;
-      state = {
-        ...state,
-        survivor: { ...state.survivor, inventory },
-        containers: { ...state.containers, [containerId]: [...items.slice(0, itemIndex), ...items.slice(itemIndex + 1)] },
-      };
-      notify();
-      return { status: 'transferred', slot };
+      return transferStorage({ kind: 'container', id: containerId }, itemId, { kind: 'inventory' });
     },
+    transferStorage,
     moveInventoryItem(from, itemId, to) {
       const { survivor } = state;
       if (!isInventoryAvailable() || !Number.isInteger(from) || !Number.isInteger(to)
@@ -660,7 +800,7 @@ function makeGameCoordinator({
       return true;
     },
     activateQuickSlot(slot, itemId) {
-      if (pause.getPauseState().isPaused || state.gameOver || !Number.isInteger(slot)
+      if (pause.getPauseState().isPaused || state.gameOver || state.sleep || !Number.isInteger(slot)
           || slot < 0 || slot >= inventoryQuickSlotCount) return 'unavailable';
       const item = state.survivor.inventory[slot];
       if (!item || item.id !== itemId) return 'unavailable';
@@ -691,7 +831,7 @@ function makeGameCoordinator({
       const item = survivor.inventory[slot];
       if (!isInventoryAvailable() || item?.kind !== 'backpack' || item.id !== itemId) return 'unavailable';
       const equipped = survivor.equippedPackId === itemId;
-      if (equipped && carriedLoad(survivor.inventory, null).weight > baseCarryCapacity + 1e-9) return 'too_heavy';
+      if (equipped && carriedLoad(survivor.inventory, null, state.packs).weight > baseCarryCapacity + 1e-9) return 'too_heavy';
       state = { ...state, survivor: { ...survivor, equippedPackId: equipped ? null : itemId } };
       notify();
       return equipped ? 'unequipped' : 'equipped';
@@ -724,10 +864,13 @@ function makeGameCoordinator({
       const item = survivor.inventory[slot];
       if (!isInventoryAvailable() || !item || item.id !== itemId) return { status: 'unavailable' };
       if (survivor.attack && survivor.equippedWeaponId === itemId) return { status: 'swing_in_progress' };
+      if (item.kind === 'backpack' && itemWeight(item, state.packs) > baseCarryCapacity + 1e-9) {
+        return { status: 'pack_too_heavy' };
+      }
 
       const inventory = [...survivor.inventory];
       inventory[slot] = null;
-      if (survivor.equippedPackId === itemId && carriedLoad(inventory, null).weight > baseCarryCapacity + 1e-9) {
+      if (survivor.equippedPackId === itemId && carriedLoad(inventory, null, state.packs).weight > baseCarryCapacity + 1e-9) {
         return { status: 'too_heavy' };
       }
       const position = findDropPosition(survivor.position, state.droppedItems, traversal.canOccupy, traversal.hasLineOfSight);

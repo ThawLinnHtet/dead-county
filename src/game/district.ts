@@ -4,6 +4,13 @@ import type { MapObject } from './world.ts';
 export const districtWidth = 126;
 export const districtHeight = 49;
 
+export const workshopLock = {
+  doorId: 'lot_3_1_door',
+  houseId: 'lot_3_1',
+  keyCabinetId: 'lot_3_2_cabinet',
+  keyKind: 'workshop_key',
+} as const;
+
 const blocks = [
   { x: 54, y: 2, name: 'Alder', landmark: 'Corner Store', supplies: ['canned_food', 'canned_food', 'water_bottle'] },
   { x: 78, y: 3, name: 'Birch', landmark: 'Birch Clinic', supplies: ['bandage', 'bandage', 'water_bottle'] },
@@ -31,6 +38,7 @@ export const districtBuildings = blocks.flatMap((block, blockIndex) => [
   const expanded = [...stock] as ItemKind[];
   if (featured) expanded.push(blockIndex % 2 === 0 ? 'door_wedge' : 'trail_mix');
   if (lot === 1 && blockIndex === 0) expanded.push('backpack');
+  if (`${id}_cabinet` === workshopLock.keyCabinetId) expanded.push(workshopLock.keyKind);
   return {
     id, name, featured, unexpandedStock: stock as readonly ItemKind[],
     stock: expanded,

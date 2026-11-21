@@ -23,11 +23,15 @@ Drag loot into Inventory to fill the first open slot, or choose **Transfer**. Dr
 
 House B has gray siding, a columned porch, and Canned Food in its kitchen cabinet. The street crossing is quicker, while the detour offers cover that can break line of sight. House C has food and water and draws more zombie activity. Hunger and Thirst rise during active play. Bandages restore lost Health, and a run ends when Health reaches zero.
 
-Follow the avenue east into six connected blocks. The Corner Store, Birch Clinic and Cedar Workshop have different supplies. Sprinting and swinging can draw nearby zombies toward the sound. Use **E** at an indicated door or window to open or close it. Bandages stop bleeding after a bite. The game clock advances during play, so the neighborhood gets darker as night approaches.
+Follow the avenue east into six connected blocks. The Corner Store, Birch Clinic and Cedar Workshop have different supplies. Sprinting and swinging can draw nearby zombies toward the sound. Exterior doors start closed. Use **E** at an indicated door or window to open or close it. Cedar Workshop starts locked. Find its key in Cedar House or enter through the workshop's side window and unlatch the door from inside. Bandages stop bleeding after a bite. The neighborhood gets darker as night approaches.
 
 Walls and closed doors hide zombies and muffle their sounds. Listen for footsteps and groans from either side, and hold **C** to make a quieter approach. If a zombie saw you enter a building, it can follow your last known position and force the door. The living-room cabinet in House B holds a Canvas Backpack and a Door Wedge. Equip the pack in Inventory to raise your carry limit from 5 kg to 9 kg. Use the wedge from Inventory while standing inside beside a closed door to buy time against pursuit.
 
 Watch for a short arc beside your survivor when a hidden zombie makes a nearby sound. It shows the direction to check. Above 3.5 kg, sprinting costs more Stamina and recovery slows. A pressured door rattles and develops cracks. **Near failure** means it may give way on the next few blows.
+
+Equip the Canvas Backpack to use its six storage slots. Drag items between the backpack, your main inventory, and an open cupboard. When the starter cabinet is empty, approach it and use **E Store** to stash supplies for later.
+
+Fatigue builds while you are awake. Close the entrance to your chosen shelter, take care of Hunger and Thirst, and use **E Sleep** beside a bed. Sleep runs the neighborhood clock and zombie activity faster. You can wake with **E**, and danger or critical needs can wake you early. Stashed supplies, fatigue, and remaining sleep carry over through Continue.
 
 ## Controls
 

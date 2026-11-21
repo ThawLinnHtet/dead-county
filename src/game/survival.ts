@@ -1,9 +1,19 @@
-export const survivalStatNames = { health: 'Health', stamina: 'Stamina', hunger: 'Hunger', thirst: 'Thirst' } as const;
+export const survivalStatNames = { health: 'Health', stamina: 'Stamina', hunger: 'Hunger', thirst: 'Thirst', fatigue: 'Fatigue' } as const;
 export type SurvivalStat = keyof typeof survivalStatNames;
 export type Need = 'hunger' | 'thirst';
 type Needs = Readonly<Record<Need, number>>;
 export const survivalPacing = 8;
 export const dayLengthMs = 12 * 60_000;
+const gameHourMs = dayLengthMs / 24;
+export const sleepSpeed = 90;
+export const maximumSleepMs = 10 * gameHourMs;
+export const fatiguePerMs = 100 / (20 * gameHourMs);
+export const sleepRecoveryPerMs = 100 / (6 * gameHourMs);
+
+export function plannedSleepMs(activeTimeMs: number) {
+  const hour = (8 + activeTimeMs / gameHourMs) % 24;
+  return (hour >= 20 ? 30 - hour : hour < 6 ? 6 - hour : 1) * gameHourMs;
+}
 export const bleedingDamagePerMs = .00018;
 
 function neighborhoodMinute(activeTimeMs: number) {

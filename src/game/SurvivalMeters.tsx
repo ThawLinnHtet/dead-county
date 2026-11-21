@@ -7,6 +7,8 @@ import './survivalMeters.css';
 export function SurvivalMeters({ coordinator }: { coordinator: GameCoordinator }) {
   const characterId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.characterId);
   const bleeding = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.bleeding);
+  const sleeping = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().sleep !== null);
+  const restNotice = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().restNotice);
   const female = characterId === 'survivor_female';
   return (
     <section className="survival-meters" aria-label="Survival stats">
@@ -21,6 +23,11 @@ export function SurvivalMeters({ coordinator }: { coordinator: GameCoordinator }
         <SurvivalMeter coordinator={coordinator} stat="stamina" />
         <SurvivalMeter coordinator={coordinator} stat="hunger" />
         <SurvivalMeter coordinator={coordinator} stat="thirst" />
+        <SurvivalMeter coordinator={coordinator} stat="fatigue" />
+        {(sleeping || restNotice) && <span className="survival-need-warning" data-level={restNotice === 'danger' ? 'critical' : 'warning'} role="status">
+          {sleeping ? 'Sleeping · E to wake up' : restNotice === 'danger' ? 'Woke up in danger'
+            : restNotice === 'needs' ? 'Woke up with critical hunger or thirst' : 'Awake'}
+        </span>}
       </div>
     </section>
   );

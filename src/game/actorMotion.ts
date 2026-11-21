@@ -29,7 +29,7 @@ const steps = [
 
 export function createSurvivorDirectionTexture(textures: Phaser.Textures.TextureManager) {
   if (textures.exists(survivorDirectionKey)) return;
-  const canvas = textures.createCanvas(survivorDirectionKey, actorFrameWidth * 7, actorFrameHeight * 4);
+  const canvas = textures.createCanvas(survivorDirectionKey, actorFrameWidth * 7, actorFrameHeight * 6);
   if (!canvas) return;
   const ctx = canvas.context;
   const outline = '#292723';
@@ -39,8 +39,10 @@ export function createSurvivorDirectionTexture(textures: Phaser.Textures.Texture
   ];
   for (const [lookIndex, look] of looks.entries()) {
     const source = textures.get(lookIndex === 0 ? 'actors' : 'survivor-female').getSourceImage() as HTMLImageElement;
-    for (const rear of [false, true]) {
-      const row = lookIndex * 2 + Number(rear);
+    for (const view of [0, 1, 2]) {
+      const rear = view !== 0;
+      const turned = view === 2;
+      const row = lookIndex * 3 + view;
       for (let frame = 0; frame < 7; frame += 1) {
         const x = frame * actorFrameWidth;
         const y = row * actorFrameHeight;
@@ -50,19 +52,19 @@ export function createSurvivorDirectionTexture(textures: Phaser.Textures.Texture
         ctx.translate(x, y);
         ctx.imageSmoothingEnabled = false;
         ctx.drawImage(source, x, 33, actorFrameWidth, 25, 7, 33, 26, 25);
-        ctx.translate(0, dip);
+        ctx.translate(turned ? 2 : 0, dip);
         ctx.fillStyle = outline;
         ctx.fillRect(10, 20, 20, 18);
-        ctx.fillRect(8, 23 + arm, 5, 13);
+        ctx.fillRect(8, 23 + arm, turned ? 3 : 5, 13);
         ctx.fillRect(27, 23 - arm, 5, 13);
         ctx.fillRect(14, 7, 12, 13);
         ctx.fillRect(16, 5, 8, 2);
         ctx.fillStyle = look.coat;
         ctx.fillRect(11, 21, 18, 16);
-        ctx.fillRect(9, 24 + arm, 4, 10);
+        ctx.fillRect(9, 24 + arm, turned ? 2 : 4, 10);
         ctx.fillRect(27, 24 - arm, 4, 10);
         ctx.fillStyle = look.skin;
-        ctx.fillRect(9, 34 + arm, 3, 2);
+        ctx.fillRect(9, 34 + arm, turned ? 2 : 3, 2);
         ctx.fillRect(28, 34 - arm, 3, 2);
         ctx.fillRect(16, 12, 8, 7);
         ctx.fillRect(18, 19, 4, 2);
@@ -71,11 +73,10 @@ export function createSurvivorDirectionTexture(textures: Phaser.Textures.Texture
         ctx.fillRect(17, 6, 6, 2);
         ctx.fillStyle = look.seam;
         if (rear) {
-          ctx.fillRect(13, 21, 14, 15);
-          ctx.fillStyle = '#827457';
-          ctx.fillRect(15, 23, 10, 11);
-          ctx.fillStyle = '#645641';
-          ctx.fillRect(15, 26, 10, 2);
+          ctx.fillRect(12, 24, 16, 2);
+          ctx.fillRect(19, 26, 1, 9);
+          ctx.fillRect(12, 35, 16, 2);
+          if (turned) ctx.fillRect(26, 19, 2, 5);
         } else {
           ctx.fillRect(19, 22, 2, 14);
           ctx.fillRect(13, 26, 4, 2);
