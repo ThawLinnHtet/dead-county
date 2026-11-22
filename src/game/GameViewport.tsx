@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
 import { HouseScene } from './HouseScene';
+import type { GameAudio } from './gameAudio';
 import type { GameCoordinator, GameOverResult, InteractionTarget } from './gameCoordinator';
 import { itemDefinitions } from './items';
 
@@ -15,8 +16,9 @@ function renderSize(parent: HTMLElement) {
   };
 }
 
-export function GameViewport({ coordinator, onDeathAnimationEnd }: {
+export function GameViewport({ coordinator, audio, onDeathAnimationEnd }: {
   coordinator: GameCoordinator;
+  audio: GameAudio;
   onDeathAnimationEnd: (result: GameOverResult) => void;
 }) {
   const host = useRef<HTMLDivElement>(null);
@@ -63,7 +65,7 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       }
       prompt.style.left = `clamp(${promptInset}px, ${placement.x}px, calc(100% - ${promptInset}px))`;
       prompt.style.top = `${placement.y}px`;
-    }, onDeathAnimationEnd, window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }, onDeathAnimationEnd, window.matchMedia('(prefers-reduced-motion: reduce)').matches, audio);
 
     function updateMovement() {
       coordinator.setMovement({
@@ -90,6 +92,7 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       if (event.code === 'KeyE' && displayed) {
         const target = displayed;
         const result = coordinator.interact(target);
+        if (result.status === 'picked_up') audio.confirm('item');
         if (target.kind === 'opening' && (result.status === 'opening_changed' || result.status === 'opening_locked')) {
           scene.playOpeningFeedback(target, result.status === 'opening_locked');
         }
@@ -171,7 +174,7 @@ export function GameViewport({ coordinator, onDeathAnimationEnd }: {
       cancelAnimationFrame(frame);
       game?.destroy(true);
     };
-  }, [coordinator, onDeathAnimationEnd]);
+  }, [coordinator, audio, onDeathAnimationEnd]);
 
   return (
     <div ref={host} className="game-viewport" role="region" aria-label="Dead County game world" tabIndex={-1}>

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { version } from '../../package.json';
 import type { SurvivorId } from '../game/gameCoordinator';
 import { OverwriteConfirmation } from './OverwriteConfirmation';
@@ -40,10 +41,12 @@ function Wordmark({ main = false }: { main?: boolean }) {
 
 export function RunMenus({
   initialScreen, canStart, canContinue, statusMessage, errorMessage, pending, replacementOpen,
+  soundToggle,
   onStartRun, onContinue, onConfirmReplacement, onCancelReplacement, onNavigate,
   canRetryRead, canReplaceDamaged, damagedStage, onRetryRead, onReplaceDamaged, onDecideDamaged,
 }: {
   initialScreen: 'main' | 'survivors';
+  soundToggle: ReactNode;
   canStart: boolean;
   canContinue: boolean;
   statusMessage: string;
@@ -143,7 +146,10 @@ export function RunMenus({
             </div>
             <button className="menu-button" ref={showControls} disabled={pending} onClick={() => open('controls')}>Controls</button>
           </nav>
-          <p className="menu-version">v{version}</p>
+          <footer className="menu-footer">
+            {soundToggle}
+            <p className="menu-version">v{version}</p>
+          </footer>
           {damagedStage === 'confirm' && (
             <OverwriteConfirmation
               damaged

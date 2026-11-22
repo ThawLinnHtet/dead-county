@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { PauseState } from './gamePause';
 import './pauseMenu.css';
 
@@ -14,10 +14,12 @@ export function PauseMenu({
   pause,
   onResume,
   saveActions,
+  soundToggle,
 }: {
   pause: PauseState;
   onResume: () => void;
   saveActions?: PauseSaveActions;
+  soundToggle: ReactNode;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const resume = useRef<HTMLButtonElement>(null);
@@ -110,6 +112,7 @@ export function PauseMenu({
           </button>
         </div>
       )}
+      <div className="pause-menu__sound">{soundToggle}</div>
     </dialog>
   );
 }

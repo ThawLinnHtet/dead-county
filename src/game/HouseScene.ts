@@ -5,8 +5,7 @@ import {
   survivorDirectionKey, zombieLooks, zombieWalkFrame, zombieWalkKey,
 } from './actorMotion';
 import { batConfig, damageCueMs, shoveConfig } from './combat';
-import { createCombatAudio } from './combatAudio';
-import type { FootSurface } from './combatAudio';
+import type { FootSurface, GameAudio } from './gameAudio';
 import { drawBat, drawBatAim, drawBiteArms, drawDamageCue, drawShove } from './combatArt';
 import femaleSurvivorUrl from './survivor-female.png';
 import { drawFurniture } from './drawFurniture';
@@ -56,7 +55,6 @@ export class HouseScene extends Phaser.Scene {
   private readonly finishDeathAnimation: (result: GameOverResult) => void;
   private readonly droppedItemArt = new Map<string, Phaser.GameObjects.Image>();
   private groundChunks: { art: Phaser.GameObjects.Container; left: number; right: number; top: number; bottom: number }[] = [];
-  private readonly combatAudio = createCombatAudio();
   private readonly zombieArt = new Map<string, {
     sprite: Phaser.GameObjects.Sprite;
     shadow: Phaser.GameObjects.Ellipse;
@@ -85,6 +83,7 @@ export class HouseScene extends Phaser.Scene {
     showInteractionPrompt: (prompt: InteractionPromptPosition | null) => void,
     finishDeathAnimation: (result: GameOverResult) => void,
     private readonly reduceMotion: boolean,
+    private readonly audio: GameAudio,
   ) {
     super('house-a');
     this.coordinator = coordinator;
@@ -123,7 +122,7 @@ export class HouseScene extends Phaser.Scene {
     this.soundArt = this.add.graphics();
     this.impactArt = createImpactArt(this, this.reduceMotion);
     const initialState = this.coordinator.getState();
-    this.combatAudio.setEnvironment(initialState.occupiedHouseId !== null, neighborhoodDarkness(initialState.activeTimeMs) > .55);
+    this.audio.setEnvironment(initialState.occupiedHouseId !== null, neighborhoodDarkness(initialState.activeTimeMs) > .55);
     const survivorTexture = initialState.survivor.characterId === 'survivor_female' ? 'survivor-female' : 'actors';
     this.survivor = this.add.sprite(0, 0, survivorTexture, 0).setOrigin(.5, actorOrigin);
     createSurvivorDirectionTexture(this.textures);
@@ -163,7 +162,6 @@ export class HouseScene extends Phaser.Scene {
       }
       if (paused === wasPaused) return;
       wasPaused = paused;
-      this.combatAudio.setPaused(paused);
       this.lastFrameAt = undefined;
       camera.setLerp(paused ? 0 : .14);
       if (paused) {
@@ -182,8 +180,6 @@ export class HouseScene extends Phaser.Scene {
     canvas.addEventListener('contextmenu', this.onContextMenu);
     window.addEventListener('mouseup', this.onWorldRelease);
     window.addEventListener('pointercancel', this.onWorldRelease);
-    window.addEventListener('keydown', this.unlockAudio, { once: true, capture: true });
-    window.addEventListener('pointerdown', this.unlockAudio, { once: true, capture: true });
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       canvas.removeEventListener('mousedown', this.onWorldPress, true);
       canvas.removeEventListener('pointermove', this.onWorldMove);
@@ -191,9 +187,6 @@ export class HouseScene extends Phaser.Scene {
       canvas.removeEventListener('contextmenu', this.onContextMenu);
       window.removeEventListener('mouseup', this.onWorldRelease);
       window.removeEventListener('pointercancel', this.onWorldRelease);
-      window.removeEventListener('keydown', this.unlockAudio, true);
-      window.removeEventListener('pointerdown', this.unlockAudio, true);
-      this.combatAudio.dispose();
       unsubscribe();
       this.scale.off(Phaser.Scale.Events.RESIZE, resize);
     });
@@ -274,13 +267,10 @@ export class HouseScene extends Phaser.Scene {
     }
   }
 
-  private unlockAudio = () => this.combatAudio.unlock();
-
   private onContextMenu = (event: Event) => event.preventDefault();
 
   private onWorldPress = (event: MouseEvent) => {
     if (event.defaultPrevented || this.coordinator.getPauseState().isPaused || this.coordinator.getState().gameOver) return;
-    this.unlockAudio();
     const target = this.getWorldPointer(event);
     if (event.button === 2) {
       this.pointer = { clientX: event.clientX, clientY: event.clientY };
@@ -290,7 +280,7 @@ export class HouseScene extends Phaser.Scene {
   };
 
   playOpeningFeedback(target: Extract<InteractionTarget, { kind: 'opening' }>, locked: boolean) {
-    this.combatAudio.opening(target.object.type, !target.closed, locked);
+    this.audio.opening(target.object.type, !target.closed, locked);
   }
 
   private onWorldRelease = (event: MouseEvent) => {
@@ -496,9 +486,9 @@ export class HouseScene extends Phaser.Scene {
       Phaser.Math.Clamp((project(position).x - survivorFeet.x) / 180, -.9, .9);
     const stepped = (a: number, b: number, stride: number) => Math.floor(a / stride) !== Math.floor(b / stride);
     const indoors = next.occupiedHouseId !== null;
-    this.combatAudio.setEnvironment(indoors, neighborhoodDarkness(activeTimeMs) > .55);
+    this.audio.setEnvironment(indoors, neighborhoodDarkness(activeTimeMs) > .55);
     if (previous.survivor.attack?.phase === 'windup' && survivor.attack?.phase === 'contact' && !survivor.attack.kind) {
-      this.combatAudio.swing();
+      this.audio.swing();
     }
     let blockers: typeof openings | undefined;
     const clear = (from: WorldPoint, to: WorldPoint) => {
@@ -512,11 +502,11 @@ export class HouseScene extends Phaser.Scene {
         x: survivor.position.x + survivor.facing.x, y: survivor.position.y + survivor.facing.y,
       };
       this.impactArt.hit(survivor.position, source, survivor.lastBiteAtMs, 'bite', clear);
-      this.combatAudio.bite();
+      this.audio.bite(panAt(source));
     }
     if (stepped(previous.survivor.walkDistance, survivor.walkDistance, .46)) {
       const heavy = survivor.gait === 'sprint';
-      this.combatAudio.footsteps(0, heavy ? .18 : survivor.gait === 'sneak' ? .036 : .093, heavy,
+      this.audio.footsteps(0, heavy ? .18 : survivor.gait === 'sneak' ? .036 : .093, heavy,
         footSurface(survivor.position, indoors));
     }
     for (const opening of openings) {
@@ -529,7 +519,7 @@ export class HouseScene extends Phaser.Scene {
         const point = openingCenter(opening);
         const sound = this.coordinator.listenAt(point, 12);
         const strained = doorStrain(next.doorDefenses[opening.name]) !== 'intact';
-        if (sound) this.combatAudio.doorHit(panAt(point), (forced ? .34 : .26) * sound.volume, strained, forced);
+        if (sound) this.audio.doorHit(panAt(point), (forced ? .34 : .26) * sound.volume, strained, forced);
       }
     }
     let strongest: SoundCue | null = null;
@@ -537,22 +527,28 @@ export class HouseScene extends Phaser.Scene {
       const actorBefore = previous.zombies[index]!;
       if (zombie.lastBatHitAtMs !== null && zombie.lastBatHitAtMs !== actorBefore.lastBatHitAtMs) {
         this.impactArt.hit(zombie.position, survivor.position, zombie.lastBatHitAtMs, 'bat', clear);
-        this.combatAudio.impact(panAt(zombie.position));
+        this.audio.impact(panAt(zombie.position));
       }
       if (zombie.health === 0) continue;
       const sound = this.coordinator.listenAt(zombie.position, 8);
       if (!sound || sound.volume <= .01) continue;
       const pan = panAt(zombie.position);
       const footstep = stepped(actorBefore.walkDistance, zombie.walkDistance, .57);
-      if (footstep) this.combatAudio.footsteps(pan, .095 * sound.volume, false,
+      if (footstep) this.audio.footsteps(pan, .095 * sound.volume, false,
         footSurface(zombie.position, houses.some((house) => contains(house, zombie.position))), sound.muffled);
       if (zombie.attack?.kind === 'stagger' && actorBefore.attack?.kind !== 'stagger') {
-        this.combatAudio.shoveHit(pan, .23 * sound.volume);
+        this.audio.shoveHit(pan, .23 * sound.volume);
       }
       const offset = index * 911;
-      const cadence = zombie.behavior.kind === 'chase' ? 2700 : 5100;
-      const groan = stepped(previous.activeTimeMs + offset, activeTimeMs + offset, cadence);
-      if (groan) this.combatAudio.groan(pan, .24 * sound.volume, sound.muffled);
+      const chasing = zombie.behavior.kind === 'chase';
+      const cadence = chasing ? 2700 : 5100;
+      const attackStarted = zombie.attack?.phase === 'windup' && zombie.attack.kind !== 'stagger'
+        && actorBefore.attack?.phase !== 'windup';
+      const groan = attackStarted || stepped(previous.activeTimeMs + offset, activeTimeMs + offset, cadence);
+      if (groan) {
+        const level = attackStarted ? .46 : chasing ? .36 : .29;
+        this.audio.groan(pan, level * sound.volume, sound.muffled, index, attackStarted);
+      }
       const cueVolume = sound.volume * (groan ? 1 : .65);
       if ((footstep || groan) && cueVolume > (strongest?.volume ?? .15) && !this.coordinator.canSee(zombie.position)) {
         const source = project(zombie.position);

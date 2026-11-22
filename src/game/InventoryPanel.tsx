@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { DragEvent, KeyboardEvent } from 'react';
+import type { GameAudio } from './gameAudio';
 import type { GameCoordinator, StorageLocation } from './gameCoordinator';
 import { ItemIcon } from './ItemIcon';
 import { backpackSlots, carriedLoad, itemDefinitions, itemWeight } from './items';
@@ -16,7 +17,11 @@ const noItems: readonly ItemInstance[] = [];
 const itemDragType = 'application/x-dead-county-item';
 const containerNames: Record<string, string> = { cabinet: 'Cabinet', drawer: 'Drawer', supply_box: 'Supply Box' };
 
-export function InventoryPanel({ coordinator, initialItemId }: { coordinator: GameCoordinator; initialItemId?: string }) {
+export function InventoryPanel({ coordinator, audio, initialItemId }: {
+  coordinator: GameCoordinator;
+  audio: GameAudio;
+  initialItemId?: string;
+}) {
   const dialog = useRef<HTMLDialogElement>(null);
   const close = useRef<HTMLButtonElement>(null);
   const grid = useRef<HTMLDivElement>(null);
@@ -108,6 +113,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
       return;
     }
     setMoveSource(null);
+    audio.confirm('item');
     if (to === 'inventory') setReceived({ slot: result.slot, itemId: from.id });
     const item = (from.source === 'loot' ? items : from.source === 'pack' ? packed : inventory)
       .find((entry) => entry?.id === from.id);
@@ -229,6 +235,7 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
     if (selection?.source !== 'inventory') return;
     const result = coordinator.useItem(slot, selection.id);
     if (result.status === 'used' || result.status === 'wedged') {
+      audio.confirm('use');
       setSelection(null);
       setMoveSource(null);
       setFeedback({
@@ -437,10 +444,12 @@ export function InventoryPanel({ coordinator, initialItemId }: { coordinator: Ga
                         onClick={() => {
                           if (!packSelected) {
                             const changed = coordinator.toggleEquip(slot, selected.id);
+                            if (changed) audio.confirm('equip');
                             setFeedback(changed ? null : { text: 'Item unavailable.', error: true });
                             return;
                           }
                           const result = coordinator.togglePack(slot, selected.id);
+                          if (result === 'equipped' || result === 'unequipped') audio.confirm('equip');
                           setFeedback(result === 'too_heavy' ? {
                             text: 'Lighten your inventory before removing the backpack.', error: true,
                           } : null);
