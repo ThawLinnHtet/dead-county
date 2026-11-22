@@ -1,8 +1,8 @@
 import type { GameCoordinator, GameSnapshot } from '../game/gameCoordinator.ts';
-import { batConfig, shoveConfig } from '../game/combat.ts';
+import { batConfig, equippedMeleeKind, meleeWeapons, recoveryDuration, shoveConfig } from '../game/combat.ts';
 import type { AttackState } from '../game/combat.ts';
 import { alderShelter, workshopLock } from '../game/district.ts';
-import { authoredStock, backpackSlots, containerSlots, expandedStock, reachableBeds, seedContainers, starterStock } from '../game/items.ts';
+import { authoredStock, backpackSlots, containerSlots, expandedStock, knifeCabinetId, reachableBeds, seedContainers, starterStock } from '../game/items.ts';
 import type { ItemInstance } from '../game/items.ts';
 import { doorResistance } from '../game/shelter.ts';
 import { canOccupy, contains, hasLineOfSight, houses, mapHeight, mapWidth, openings, starterZombieSpawns, zombieSpawns } from '../game/world.ts';
@@ -11,7 +11,7 @@ import type { MapObject, WorldPoint } from '../game/world.ts';
 import { createZombies, zombieConfig } from '../game/zombie.ts';
 import type { ZombieState } from '../game/zombie.ts';
 
-export const saveSchemaVersion = 6;
+export const saveSchemaVersion = 7;
 export const saveWorldVersion = 'neighborhood-2';
 export const slotKey = 'local';
 
@@ -42,7 +42,8 @@ const initialContainers = seedContainers(authoredStock);
 const starterContainers = seedContainers(starterStock);
 const expandedContainers = seedContainers(expandedStock);
 const authoredItems = new Map(Object.values(initialContainers).flat().map((item) => [item.id, item.kind]));
-const preBarricadeItems = new Map([...authoredItems].filter(([, kind]) => kind !== 'board' && kind !== 'hammer'));
+const preMeleeItems = new Map([...authoredItems].filter(([, kind]) => kind !== 'kitchen_knife'));
+const preBarricadeItems = new Map([...preMeleeItems].filter(([, kind]) => kind !== 'board' && kind !== 'hammer'));
 const preLockItems = new Map([...preBarricadeItems].filter(([, kind]) => kind !== workshopLock.keyKind));
 const boardId = initialContainers[alderShelter.boardCabinetId]!.find(({ kind }) => kind === 'board')!.id;
 const starterItems = new Map(Object.values(starterContainers).flat().map((item) => [item.id, item.kind]));
@@ -76,16 +77,18 @@ function direction(value: unknown) {
     && Math.abs(Math.hypot(value.x, value.y) - 1) <= 1e-6;
 }
 
-function attack(value: unknown, timing: Pick<typeof batConfig, 'windupMs' | 'contactMs' | 'recoveryMs'>, kind?: AttackState['kind']) {
+function attack(value: unknown, timing: Pick<typeof batConfig, 'windupMs' | 'contactMs' | 'recoveryMs'>, kind?: AttackState['kind'], allowTired = false) {
   if (value === null) return true;
   if (!isRecord(value) || value.kind !== kind || !direction(value.direction) || typeof value.damageApplied !== 'boolean') return false;
-  if (kind === 'stagger') {
-    return value.phase === 'recovery' && !value.damageApplied && finite(value.remainingMs, Number.MIN_VALUE, shoveConfig.staggerMs);
+  if (value.tired !== undefined && !(allowTired && value.tired === true)) return false;
+  if (kind === 'stagger' || kind === 'knockdown') {
+    const maximum = kind === 'stagger' ? shoveConfig.staggerMs : shoveConfig.knockdownMs;
+    return value.phase === 'recovery' && !value.damageApplied && finite(value.remainingMs, Number.MIN_VALUE, maximum);
   }
   switch (value.phase) {
     case 'windup': return !value.damageApplied && finite(value.remainingMs, Number.MIN_VALUE, timing.windupMs);
     case 'contact': return finite(value.remainingMs, Number.MIN_VALUE, timing.contactMs);
-    case 'recovery': return finite(value.remainingMs, Number.MIN_VALUE, timing.recoveryMs);
+    case 'recovery': return finite(value.remainingMs, Number.MIN_VALUE, recoveryDuration(timing, value.tired === true ? true : undefined));
     default: return false;
   }
 }
@@ -98,11 +101,13 @@ function isNavigationRetry(value: unknown, activeTimeMs: number) {
 function isZombie(value: unknown, index: number, activeTimeMs: number, closed: readonly MapObject[], schema: number) {
   const authored = zombieSpawns[index];
   if (!authored || !isRecord(value)) return false;
-  const staggered = schema >= 3 && isRecord(value.attack) && value.attack.kind === 'stagger';
+  const incapacitated = isRecord(value.attack) && (
+    (schema >= 3 && value.attack.kind === 'stagger') || (schema >= 7 && value.attack.kind === 'knockdown')
+  ) ? value.attack.kind as 'stagger' | 'knockdown' : undefined;
   if (value.id !== authored.id || value.appearanceId !== authored.appearanceId
       || !point(value.position) || !canOccupy(value.position, undefined, value.health === 0 ? [] : closed) || !finite(value.health, 0, zombieConfig.health)
       || !(value.lastBatHitAtMs === null || finite(value.lastBatHitAtMs, 0, activeTimeMs))
-      || !attack(value.attack, zombieConfig.bite, staggered ? 'stagger' : undefined) || (value.health === 0 && value.attack !== null)
+      || !attack(value.attack, zombieConfig.bite, incapacitated) || (value.health === 0 && value.attack !== null)
       || !finite(value.walkDistance) || typeof value.facingLeft !== 'boolean' || typeof value.moving !== 'boolean'
       || !isRevision(value.randomState) || value.randomState > 0xffffffff || !isRecord(value.behavior)
       || !isNavigationRetry(value.navigationRetry, activeTimeMs)) return false;
@@ -136,7 +141,7 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
       || !closed.some(({ name }) => name === workshopLock.doorId))))) return false;
   const stockByContainer = legacy ? starterContainers : older ? expandedContainers : initialContainers;
   const allowedItems = legacy ? starterItems : older ? expandedItems
-    : schema < 5 ? preLockItems : schema < 6 ? preBarricadeItems : authoredItems;
+    : schema < 5 ? preLockItems : schema < 6 ? preBarricadeItems : schema < 7 ? preMeleeItems : authoredItems;
   if (!older && (!isRecord(doorDefenses) || Object.keys(doorDefenses).length > closed.length
     || !Object.entries(doorDefenses).every(([id, defense]) =>
       closed.some((door) => door.name === id && door.type === 'door') && isRecord(defense)
@@ -155,7 +160,6 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
       || !finite(survivor.health, Number.MIN_VALUE, 100) || !finite(survivor.stamina, 0, 100) || !finite(survivor.hunger, 0, 100) || !finite(survivor.thirst, 0, 100)
       || !(survivor.lastBiteAtMs === null || finite(survivor.lastBiteAtMs, 0, activeTimeMs))
       || !finite(survivor.walkDistance) || !direction(survivor.facing) || typeof survivor.facingLeft !== 'boolean'
-      || !attack(survivor.attack, shoving ? shoveConfig : batConfig, shoving ? 'shove' : undefined)
       || !Array.isArray(survivor.inventory) || survivor.inventory.length !== 12
       || !isRecord(containers) || !Array.isArray(droppedItems) || droppedItems.length > allowedItems.size
       || !Array.isArray(zombies) || zombies.length !== (legacy ? starterZombieSpawns.length : zombieSpawns.length)) return false;
@@ -171,8 +175,12 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
   for (const item of survivor.inventory) {
     if (item !== null && !claim(item)) return false;
   }
-  if (survivor.equippedWeaponId !== null &&
-    !survivor.inventory.some((item) => item?.kind === 'baseball_bat' && item.id === survivor.equippedWeaponId)) return false;
+  const weapon = typeof survivor.equippedWeaponId === 'string' ? equippedMeleeKind({
+    inventory: survivor.inventory as (ItemInstance | null)[], equippedWeaponId: survivor.equippedWeaponId,
+  }) : undefined;
+  if ((survivor.equippedWeaponId !== null && !weapon)
+    || !attack(survivor.attack, shoving ? shoveConfig : weapon ? meleeWeapons[weapon] : batConfig,
+      shoving ? 'shove' : undefined, schema >= 7 && !shoving && !!weapon)) return false;
   if (!older && survivor.equippedPackId !== null &&
     !survivor.inventory.some((item) => item?.kind === 'backpack' && item.id === survivor.equippedPackId)) return false;
   if (survivor.attack !== null && !shoving && survivor.equippedWeaponId === null) return false;
@@ -243,8 +251,8 @@ function copyItem({ id, kind }: ItemInstance): ItemInstance {
 
 function copyAttack(attack: GameSnapshot['survivor']['attack']): GameSnapshot['survivor']['attack'] {
   if (!attack) return null;
-  const { phase, direction, remainingMs, damageApplied, kind } = attack;
-  return { phase, direction: copyPoint(direction), remainingMs, damageApplied, ...(kind && { kind }) };
+  const { phase, direction, remainingMs, damageApplied, kind, tired } = attack;
+  return { phase, direction: copyPoint(direction), remainingMs, damageApplied, ...(kind && { kind }), ...(tired && { tired }) };
 }
 
 function copyBehavior(behavior: ZombieState['behavior']): ZombieState['behavior'] {
@@ -273,14 +281,17 @@ function copySnapshot({
     const newItems = older ? authored.filter((item) => preLockItems.has(item.id) && !oldItems.has(item.id)) : [];
     return [id, [...items, ...newItems].map(copyItem)];
   }));
-  if (schema < 6) {
-    for (const [id, kind] of [[alderShelter.hammerCabinetId, 'hammer'], [alderShelter.boardCabinetId, 'board']] as const) {
-      const item = initialContainers[id]!.find((entry) => entry.kind === kind)!;
-      // A player may have filled the original cupboard with a stash.
-      const destination = restoredContainers[id]!.length < containerSlots ? restoredContainers[id]
-        : Object.values(restoredContainers).find((items) => items.length < containerSlots);
-      destination?.push(copyItem(item));
-    }
+  for (const [introducedIn, id, kind] of [
+    [6, alderShelter.hammerCabinetId, 'hammer'],
+    [6, alderShelter.boardCabinetId, 'board'],
+    [7, knifeCabinetId, 'kitchen_knife'],
+  ] as const) {
+    if (schema >= introducedIn) continue;
+    const item = initialContainers[id]!.find((entry) => entry.kind === kind)!;
+    // A player may have filled the original cupboard with a stash.
+    const destination = restoredContainers[id]!.length < containerSlots ? restoredContainers[id]
+      : Object.values(restoredContainers).find((items) => items.length < containerSlots);
+    destination?.push(copyItem(item));
   }
   return {
     activeTimeMs,

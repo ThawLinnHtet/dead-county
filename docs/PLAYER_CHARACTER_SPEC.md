@@ -130,15 +130,15 @@ Both characters must support the same gameplay states and animation coverage. Mo
 
 ### 5.3 Mouse-directed melee controls (MVP)
 
-- Use **Left Mouse Click** within the Phaser gameplay world to initiate an equipped baseball-bat swing; **Space is not an MVP attack key**.
+- Use **Left Mouse Click** within the Phaser gameplay world to initiate an equipped Baseball Bat or Kitchen Knife swing. **Space** shoves one zombie and briefly knocks it down.
 - At the press that starts the swing, convert the pointer through the camera and isometric transform. Lock that world-space direction for the whole swing. Quantize the facing for animation display.
 - A near-zero aim vector preserves the last valid facing to avoid jitter. Mouse-facing for attacks may differ from movement-facing without changing collision or movement direction.
-- Bat swings still obey attack eligibility, aim arc, cooldown, obstruction, range, and hit frames. Mouse cursor placement is **not** auto-targeting.
+- Melee swings still obey attack eligibility, aim arc, cooldown, obstruction, range, and hit frames. Mouse cursor placement is **not** auto-targeting.
 - A swing can hit one zombie once. Rank eligible zombies at contact by angle to the locked centerline, then distance, then stable zombie instance ID in ordinal string order.
 - Swinging costs zero stamina. A survivor can finish a swing after a nonlethal bite, including at zero stamina. Check reach at contact.
 - Both survivors can take slow steps from wind-up through recovery. A swing immediately slows a sprinting survivor to this pace. The survivor can sprint again when recovery ends and stamina permits.
 - Blocking React UI (including the minimap), pause, death, or an unequipped weapon disables attack input. UI clicks must not pass through to Phaser.
-- Hold right-click to aim and take slower steps. With a bat equipped, the ground arc shows reach and a bracket previews the eligible target using the shared attack rules. Both survivors use the same input, attack timing, collision body, and reach.
+- Hold right-click to aim and take slower steps. With a weapon equipped, the ground arc shows its reach and a bracket previews the eligible target using the shared attack rules. Both survivors use the same input, attack timing, collision body, and reach.
 
 ### 5.4 Provisional production animation budgets
 

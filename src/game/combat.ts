@@ -1,5 +1,6 @@
 import { hasLineOfSight } from './world.ts';
 import type { WorldPoint } from './world.ts';
+import type { ItemInstance } from './items.ts';
 
 export const batConfig = {
   reach: 1.24,
@@ -10,16 +11,46 @@ export const batConfig = {
   windupMs: 250,
   contactMs: 125,
   recoveryMs: 425,
+  soundReach: 6.8,
 };
 
+const knifeConfig = {
+  reach: .89,
+  halfArc: Math.PI / 4,
+  damage: 26,
+  knockback: .06,
+  stepSpeed: 1.18,
+  windupMs: 145,
+  contactMs: 85,
+  recoveryMs: 310,
+  soundReach: 4.2,
+};
+
+export const meleeWeapons = { baseball_bat: batConfig, kitchen_knife: knifeConfig };
+export type MeleeKind = keyof typeof meleeWeapons;
+
+export function isMeleeWeapon(kind: string): kind is MeleeKind {
+  return Object.hasOwn(meleeWeapons, kind);
+}
+
+export function equippedMeleeKind(survivor: {
+  inventory: readonly (ItemInstance | null)[]; equippedWeaponId: string | null;
+}): MeleeKind | undefined {
+  const kind = survivor.inventory.find((item) => item?.id === survivor.equippedWeaponId)?.kind;
+  return kind && isMeleeWeapon(kind) ? kind : undefined;
+}
+
+export const lowStaminaSwingThreshold = 25;
+export const lowStaminaRecoveryMs = 150;
 export const damageCueMs = 280;
 export const shoveConfig = {
-  reach: 1.12, halfArc: Math.PI / 3, stepSpeed: 1.05, staminaCost: 16,
-  windupMs: 100, contactMs: 85, recoveryMs: 330, knockback: .62, staggerMs: 400,
+  reach: 1.12, halfArc: Math.PI / 3, stepSpeed: 1.05, staminaCost: 16, soundReach: 2.9,
+  windupMs: 100, contactMs: 85, recoveryMs: 330, knockback: .62, staggerMs: 400, knockdownMs: 1450,
 };
 
 export interface AttackState {
-  readonly kind?: 'shove' | 'stagger';
+  readonly kind?: 'shove' | 'stagger' | 'knockdown';
+  readonly tired?: true;
   readonly phase: 'windup' | 'contact' | 'recovery';
   readonly remainingMs: number;
   readonly direction: WorldPoint;
@@ -27,6 +58,10 @@ export interface AttackState {
 }
 
 type AttackTiming = { windupMs: number; contactMs: number; recoveryMs: number };
+
+export function recoveryDuration(timing: AttackTiming, tired?: true): number {
+  return timing.recoveryMs + (tired ? lowStaminaRecoveryMs : 0);
+}
 
 export function beginAttack(direction: WorldPoint, timing: AttackTiming): AttackState {
   return { direction, phase: 'windup', remainingMs: timing.windupMs, damageApplied: false };
@@ -38,7 +73,7 @@ export function advanceAttack(attack: AttackState | null, elapsed: number, timin
   if (remainingMs > 0) return { ...attack, remainingMs };
   switch (attack.phase) {
     case 'windup': return { ...attack, phase: 'contact', remainingMs: timing.contactMs };
-    case 'contact': return { ...attack, phase: 'recovery', remainingMs: timing.recoveryMs };
+    case 'contact': return { ...attack, phase: 'recovery', remainingMs: recoveryDuration(timing, attack.tired) };
     case 'recovery': return null;
   }
 }

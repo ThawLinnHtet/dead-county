@@ -109,7 +109,7 @@ test('a shove uses the available space up to a solid wall', () => {
   const displaced = zombie!.getState().position;
   assert.ok(displaced.x > position.x && displaced.x < 13.9);
   assert.ok(canOccupy(displaced));
-  assert.equal(zombie!.getState().attack?.kind, 'stagger');
+  assert.equal(zombie!.getState().attack?.kind, 'knockdown');
 });
 
 test('a pursuer approaches and forces an ordinary door, while one wedge buys extra time', () => {

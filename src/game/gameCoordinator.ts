@@ -1,4 +1,5 @@
-import { advanceAttack, aimFrom, batConfig, beginAttack, selectMeleeTarget, shoveConfig } from './combat.ts';
+import { advanceAttack, aimFrom, batConfig, beginAttack, equippedMeleeKind, isMeleeWeapon, lowStaminaSwingThreshold, meleeWeapons,
+  selectMeleeTarget, shoveConfig } from './combat.ts';
 import type { AttackState } from './combat.ts';
 import { alderShelter, workshopLock } from './district.ts';
 import { actorRadius, contains, createTraversal, hasLineOfSight, houses, initiallyClosed, openings, overlapsOpening, survivorSpawn, unproject } from './world.ts';
@@ -84,10 +85,10 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   canSee(position: WorldPoint): boolean;
   listenAt(position: WorldPoint, reach: number): { volume: number; muffled: boolean } | null;
   aimAt(target: WorldPoint | null): void;
-  getBatAimPreview(): BatAimPreview | null;
+  getMeleeAimPreview(): MeleeAimPreview | null;
   getLastBatContact(): BatContact | null;
   step(deltaMs: number): GameState;
-  startBatSwing(target: WorldPoint): boolean;
+  startMeleeSwing(target: WorldPoint): boolean;
   startShove(): boolean;
   getInteractionTarget(): InteractionTarget | null;
   interact(displayed: InteractionTarget): InteractionResult;
@@ -116,7 +117,7 @@ interface BatContact {
   readonly origin: WorldPoint;
 }
 
-export interface BatAimPreview {
+export interface MeleeAimPreview {
   readonly origin: WorldPoint;
   readonly arc: readonly (WorldPoint | null)[];
   readonly center: WorldPoint | null;
@@ -319,18 +320,20 @@ function makeGameCoordinator({
     return distance <= Math.min(range, peripheralRange) && traversal.hasLineOfSight(survivor.position, position);
   }
 
-  function getBatAimPreview(): BatAimPreview | null {
-    const { position: origin, attack, equippedWeaponId, facing } = state.survivor;
-    if (!ready || !equippedWeaponId || state.gameOver || state.sleep || pause.getPauseState().isPaused
+  function getMeleeAimPreview(): MeleeAimPreview | null {
+    const { position: origin, attack, facing } = state.survivor;
+    const weapon = equippedMeleeKind(state.survivor);
+    if (!ready || !weapon || state.gameOver || state.sleep || pause.getPauseState().isPaused
       || (attack && (attack.kind || attack.phase !== 'windup'))) return null;
 
     const aim = attack?.direction ?? (pointerTarget && aimFrom(origin, pointerTarget)) ?? facing;
+    const timing = meleeWeapons[weapon];
     const heading = Math.atan2(aim.y, aim.x);
-    const target = attack ? undefined : selectMeleeTarget(origin, aim, state.zombies, traversal.hasLineOfSight);
+    const target = attack ? undefined : selectMeleeTarget(origin, aim, state.zombies, traversal.hasLineOfSight, timing);
     const samples = 20;
     const arc = Array.from({ length: samples + 1 }, (_, index) => {
-      const angle = heading + batConfig.halfArc * (2 * index / samples - 1);
-      const point = { x: origin.x + Math.cos(angle) * batConfig.reach, y: origin.y + Math.sin(angle) * batConfig.reach };
+      const angle = heading + timing.halfArc * (2 * index / samples - 1);
+      const point = { x: origin.x + Math.cos(angle) * timing.reach, y: origin.y + Math.sin(angle) * timing.reach };
       return traversal.hasLineOfSight(origin, point) ? point : null;
     });
     const nearCenter = { x: origin.x + aim.x * .35, y: origin.y + aim.y * .35 };
@@ -641,7 +644,9 @@ function makeGameCoordinator({
       * (1 - .45 * Math.max(0, previous.fatigue - 35) / 65);
     const timeToExhaustion = previous.stamina / sprintDrain;
     const shoving = previous.attack?.kind === 'shove';
-    const timing = shoving ? shoveConfig : batConfig;
+    const weapon = previous.attack && !shoving ? equippedMeleeKind(previous) : undefined;
+    const melee = weapon ? meleeWeapons[weapon] : batConfig;
+    const timing = shoving ? shoveConfig : melee;
     const sprintMs = sprintRequested && !previous.attack && !sneakHeld && !ready ? Math.min(deltaMs, timeToExhaustion) : 0;
     const sprintPosition = travel(previous.position, direction, sprintSpeed * sprintMs / 1000, canStep);
     const sprinting = sprintPosition !== previous.position;
@@ -665,20 +670,21 @@ function makeGameCoordinator({
     const activeTimeMs = state.activeTimeMs + deltaMs;
     let attack = advanceAttack(previous.attack, deltaMs, timing);
     const swingContact = attack?.phase === 'contact' && previous.attack?.phase === 'windup';
-    if (swingContact) emitSound({ position: nextPosition, reach: attack?.kind === 'shove' ? 2.9 : 6.8 });
+    if (swingContact) emitSound({ position: nextPosition, reach: timing.soundReach });
     else if (traveled > 0 && Math.floor(activeTimeMs / 420) !== Math.floor(state.activeTimeMs / 420)) {
       emitSound({ position: nextPosition, reach: sprinting ? 8.5 : sneakHeld ? .65 : 1.7 });
     }
     const sightRange = zombieConfig.detectionDistance - 2.1 * neighborhoodDarkness(activeTimeMs) - (sneakHeld ? 1.7 : 0);
     const approached = zombies.map((zombie) => zombie.step(nextPosition, deltaMs, activeTimeMs, sightRange));
     if (swingContact && attack) {
-      const target = selectMeleeTarget(nextPosition, attack.direction, approached, traversal.hasLineOfSight, timing);
+      const candidates = shoving ? approached.filter(({ attack }) => attack?.kind !== 'knockdown') : approached;
+      const target = selectMeleeTarget(nextPosition, attack.direction, candidates, traversal.hasLineOfSight, timing);
       if (target) {
         const zombie = zombies.find((zombie) => zombie.getState() === target)!;
         if (attack.kind === 'shove') zombie.receiveShove(nextPosition);
         else {
           lastBatContact = { zombieId: target.id, timeMs: activeTimeMs, position: target.position, origin: nextPosition };
-          zombie.receiveBatHit(nextPosition, activeTimeMs);
+          zombie.receiveMeleeHit(nextPosition, activeTimeMs, melee);
         }
         attack = { ...attack, damageApplied: true };
       }
@@ -802,7 +808,7 @@ function makeGameCoordinator({
     isReady: () => ready,
     isSneaking: () => sneakHeld,
     canSee,
-    getBatAimPreview,
+    getMeleeAimPreview,
     getLastBatContact: () => lastBatContact,
     listenAt,
     aimAt(target) {
@@ -811,9 +817,10 @@ function makeGameCoordinator({
       pointerTarget = target;
     },
     step,
-    startBatSwing(target) {
+    startMeleeSwing(target) {
       const { survivor } = state;
-      if (pause.getPauseState().isPaused || !survivor.equippedWeaponId || survivor.attack || state.gameOver || state.sleep
+      const weapon = equippedMeleeKind(survivor);
+      if (pause.getPauseState().isPaused || !weapon || survivor.attack || state.gameOver || state.sleep
           || !Number.isFinite(target.x) || !Number.isFinite(target.y)) return false;
 
       const facing = aimFrom(survivor.position, target)
@@ -826,7 +833,10 @@ function makeGameCoordinator({
           gait: survivor.gait === 'sprint' ? 'walk' : survivor.gait,
           facing,
           facingLeft: Math.abs(facing.x - facing.y) > 0.0001 ? facing.x < facing.y : survivor.facingLeft,
-          attack: beginAttack(facing, batConfig),
+          attack: {
+            ...beginAttack(facing, meleeWeapons[weapon]),
+            ...(survivor.stamina < lowStaminaSwingThreshold && { tired: true }),
+          },
         },
       };
       notify();
@@ -878,7 +888,7 @@ function makeGameCoordinator({
           || slot < 0 || slot >= inventoryQuickSlotCount) return 'unavailable';
       const item = state.survivor.inventory[slot];
       if (!item || item.id !== itemId) return 'unavailable';
-      if (item.kind !== 'baseball_bat') return 'inspect';
+      if (!isMeleeWeapon(item.kind)) return 'inspect';
       if (state.survivor.attack) return 'unavailable';
 
       changeEquippedWeapon(item.id);
@@ -896,7 +906,7 @@ function makeGameCoordinator({
     closeInventoryPanel,
     toggleEquip(slot, itemId) {
       const item = state.survivor.inventory[slot];
-      if (!isInventoryAvailable() || state.survivor.attack || !item || item.id !== itemId || item.kind !== 'baseball_bat') return false;
+      if (!isInventoryAvailable() || state.survivor.attack || !item || item.id !== itemId || !isMeleeWeapon(item.kind)) return false;
       changeEquippedWeapon(state.survivor.equippedWeaponId === itemId ? null : itemId);
       return true;
     },

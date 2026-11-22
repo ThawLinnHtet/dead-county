@@ -269,7 +269,7 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
       state = {
         ...state,
         attack: {
-          kind: 'stagger', phase: 'recovery', remainingMs: shoveConfig.staggerMs,
+          kind: 'knockdown', phase: 'recovery', remainingMs: shoveConfig.knockdownMs,
           direction: { x: -direction.x, y: -direction.y }, damageApplied: false,
         },
         position,
@@ -277,14 +277,14 @@ function createZombie({ id, position, destination, appearanceId = 'zombie_civili
       };
       resetPath();
     },
-    receiveBatHit(origin: WorldPoint, activeTimeMs: number) {
+    receiveMeleeHit(origin: WorldPoint, activeTimeMs: number, weapon: Pick<typeof batConfig, 'damage' | 'knockback'>) {
       const { position } = state;
-      const direction = aimFrom(origin, position);
+      const direction = state.attack?.kind === 'knockdown' ? null : aimFrom(origin, position);
       const displaced = direction && {
-        x: position.x + direction.x * batConfig.knockback,
-        y: position.y + direction.y * batConfig.knockback,
+        x: position.x + direction.x * weapon.knockback,
+        y: position.y + direction.y * weapon.knockback,
       };
-      const health = Math.max(0, state.health - batConfig.damage);
+      const health = Math.max(0, state.health - weapon.damage);
       state = {
         ...state,
         health,

@@ -7,6 +7,8 @@ import type { WorldPoint } from '../game/world.ts';
 import type { ZombieState } from '../game/zombie.ts';
 import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
 import { bleedingDamagePerMs } from '../game/survival.ts';
+import { lowStaminaRecoveryMs, meleeWeapons, shoveConfig } from '../game/combat.ts';
+import { knifeCabinetId } from '../game/items.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
 const farAway = { x: 4, y: 2 };
@@ -63,7 +65,7 @@ test('Continue matches Pause and Resume for committed attacks before and after c
     assert.equal(original.toggleEquip(0, bat.id), true);
     original.closeInventoryPanel();
     original.step(1);
-    assert.equal(original.startBatSwing(target), true);
+    assert.equal(original.startMeleeSwing(target), true);
     original.step(elapsed);
     original.setMovement({ x: 0, y: -1 }, true);
     const continued = pauseAndContinue(original);
@@ -77,6 +79,32 @@ test('Continue matches Pause and Resume for committed attacks before and after c
     assert.equal(after.zombies[0]!.health, frozen.zombies[0]!.health);
     for (let tick = 0; tick < 40; tick += 1) matchedStep(original, continued, 20);
   }
+});
+
+test('Continue preserves a tired knife swing and the time a zombie has left on the ground', () => {
+  const target = { x: 12.45, y: 9.15 };
+  const fresh = encounter({ x: 11.9, y: 9.15 }, { position: target });
+  const state = captureRun(fresh);
+  const items = state.containers[knifeCabinetId]!;
+  const knife = items.find(({ kind }) => kind === 'kitchen_knife')!;
+  const original = restoreGameCoordinator({
+    ...state,
+    containers: { ...state.containers, [knifeCabinetId]: items.filter(({ id }) => id !== knife.id) },
+    survivor: { ...state.survivor, stamina: 20, inventory: [knife, ...state.survivor.inventory.slice(1)] },
+  });
+  assert.equal(original.activateQuickSlot(0, knife.id), 'equipped');
+  original.aimAt(target);
+  assert.equal(original.startShove(), true);
+  original.step(shoveConfig.windupMs + shoveConfig.contactMs + shoveConfig.recoveryMs);
+  assert.equal(original.getState().zombies[0]!.attack?.kind, 'knockdown');
+  assert.equal(original.startMeleeSwing(target), true);
+  const timing = meleeWeapons.kitchen_knife;
+  original.step(timing.windupMs + timing.contactMs);
+  assert.equal(original.getState().survivor.attack?.remainingMs, timing.recoveryMs + lowStaminaRecoveryMs);
+  const continued = pauseAndContinue(original);
+  for (let frame = 0; frame < 50; frame += 1) matchedStep(original, continued, 20);
+  assert.equal(continued.getState().survivor.equippedWeaponId, knife.id);
+  assert.notEqual(continued.getState().zombies[0]!.attack?.kind, 'knockdown');
 });
 
 test('an unreachable wander target keeps its retry interval and chooses again only on active steps', () => {

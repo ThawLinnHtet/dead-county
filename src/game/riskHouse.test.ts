@@ -181,7 +181,7 @@ test('changing only a zombie appearance leaves pursuit, attacks, damage and move
     game.closeInventoryPanel();
 
     return Array.from({ length: 42 }, (_, tick) => {
-      if (tick === 20) assert.equal(game.startBatSwing(position), true);
+      if (tick === 20) assert.equal(game.startMeleeSwing(position), true);
       const { survivor, zombies: [zombie] } = game.step(50);
       assert.ok(zombie);
       const { appearanceId: renderedAppearance, ...gameplay } = zombie;
