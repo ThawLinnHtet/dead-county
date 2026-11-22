@@ -17,7 +17,7 @@ Open the local address printed by Vite. Use a desktop browser with a keyboard an
 
 ## Your first run
 
-Both survivors start unarmed in House A. Search the starter cabinet for a Baseball Bat and Water Bottle. Transfer the bat, then click it in the gameplay strip to equip it or choose **Equip** in Inventory. Click a consumable in the strip to open its details and choose whether to use it.
+Both survivors start unarmed in House A. Search the starter cabinet for a Baseball Bat and Water Bottle. Transfer the bat, then click it in the gameplay strip to equip it or choose **Equip** in Inventory. Click a consumable in the strip to open its details and choose whether to use it. Search the House B kitchen cabinet for the quicker, shorter reach Kitchen Knife. Use Space to knock a nearby zombie down briefly, then move away or follow up with a normal swing.
 
 Drag loot into Inventory to fill the first open slot, or choose **Transfer**. Drag carried items between slots to move or swap them, or choose **Move** and select a destination. Drag an item onto **Drop** to place it on the ground.
 
@@ -47,8 +47,8 @@ Fatigue builds while you are awake. Close the entrance to your chosen shelter, t
 | `Shift` + movement | Sprint while Stamina permits |
 | Hold `C` + movement | Sneak with a lower profile and quieter steps |
 | Mouse movement | Face toward the pointer over the game world |
-| Hold right mouse button | Aim while taking slower side steps and back steps. With a bat equipped, the arc shows your reach and brackets mark a reachable target. |
-| Left click | Swing the equipped bat in the pointed direction |
+| Hold right mouse button | Aim while taking slower side steps and back steps. With a weapon equipped, the arc shows its reach and brackets mark a reachable target. |
+| Left click | Swing the equipped weapon in the pointed direction. Low Stamina lengthens recovery. |
 | `Space` | Spend Stamina to shove one nearby zombie in the faced direction |
 | `E` | Search, pick up an item, or open or close an indicated passage |
 | `I` | Toggle Inventory |

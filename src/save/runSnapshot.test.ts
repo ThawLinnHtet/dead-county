@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator.ts';
 import { alderShelter, workshopLock } from '../game/district.ts';
 import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
-import { containerSlots, expandedStock, seedContainers, starterStock } from '../game/items.ts';
+import { containerSlots, expandedStock, knifeCabinetId, seedContainers, starterStock } from '../game/items.ts';
 import { initiallyClosed, starterZombieSpawns, zombieSpawns } from '../game/world.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
@@ -100,7 +100,7 @@ test('the current schema preserves equipped gear and migrates schema three with 
     packs: _packs, sleep: _sleep, lockedDoorIds: _locks, containers, survivor: { fatigue: _fatigue, ...oldSurvivor }, ...rest
   } = saved;
   const oldContainers = Object.fromEntries(Object.entries(containers).map(([id, items]) => [
-    id, items.filter(({ kind }) => kind !== workshopLock.keyKind && kind !== 'board' && kind !== 'hammer'),
+    id, items.filter(({ kind }) => kind !== workshopLock.keyKind && kind !== 'board' && kind !== 'hammer' && kind !== 'kitchen_knife'),
   ]));
   const legacy = inspectSaveRecord({
     ...record, schemaVersion: 3, run: { id: runId, snapshot: { ...rest, containers: oldContainers, survivor: oldSurvivor } },
@@ -177,7 +177,7 @@ test('schema five supplies migrate once without moving the contents of a full cu
   const original = captureRun(createGameCoordinator());
   const { boardCabinetId, doorId } = alderShelter;
   const containers = Object.fromEntries(Object.entries(original.containers).map(([id, items]) => [
-    id, items.filter(({ kind }) => kind !== 'board' && kind !== 'hammer'),
+    id, items.filter(({ kind }) => kind !== 'board' && kind !== 'hammer' && kind !== 'kitchen_knife'),
   ]));
   const filled = [...containers[boardCabinetId]!];
   for (const [id, contents] of Object.entries(containers)) {
@@ -196,6 +196,31 @@ test('schema five supplies migrate once without moving the contents of a full cu
   const reread = inspectSaveRecord(saveRecord(3, migrated.run));
   assert.equal(reread.kind, 'ready');
   assert.deepEqual(reread.run.snapshot.containers, snapshot.containers);
+});
+
+test('schema six adds the knife once and preserves an in-progress bat swing', () => {
+  const original = captureRun(createGameCoordinator());
+  const bat = original.containers.starter_container![0]!;
+  const containers = {
+    ...original.containers,
+    [knifeCabinetId]: [],
+    starter_container: original.containers.starter_container!.slice(1),
+  };
+  const game = restoreGameCoordinator({
+    ...original, containers,
+    survivor: { ...original.survivor, inventory: [bat, ...original.survivor.inventory.slice(1)], equippedWeaponId: bat.id },
+  });
+  assert.equal(game.startMeleeSwing({ x: 12, y: 9 }), true);
+  game.step(30);
+  const snapshot = captureRun(game);
+  const old = { ...saveRecord(2, { id: runId, snapshot }), schemaVersion: 6 };
+  const migrated = inspectSaveRecord(old);
+  assert.equal(migrated.kind, 'ready');
+  assert.deepEqual(migrated.run.snapshot.survivor, snapshot.survivor);
+  assert.deepEqual(migrated.run.snapshot.containers[knifeCabinetId]?.map(({ kind }) => kind), ['kitchen_knife']);
+  const roundTrip = inspectSaveRecord(saveRecord(3, migrated.run));
+  assert.equal(roundTrip.kind, 'ready');
+  assert.deepEqual(roundTrip.run, migrated.run);
 });
 
 test('Continue restores a strained barricade and rejects impossible defenses', () => {

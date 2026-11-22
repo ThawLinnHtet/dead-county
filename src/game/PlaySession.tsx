@@ -45,7 +45,7 @@ export function PlaySession({
     coordinator.subscribe,
     () => coordinator.getState().occupiedHouseId,
   );
-  const batEquipped = useSyncExternalStore(coordinator.subscribe, () => !!coordinator.getState().survivor.equippedWeaponId);
+  const weaponEquipped = useSyncExternalStore(coordinator.subscribe, () => !!coordinator.getState().survivor.equippedWeaponId);
   const survivalSeconds = useSyncExternalStore(
     coordinator.subscribe,
     () => Math.floor(coordinator.getState().activeTimeMs / 1000),
@@ -132,13 +132,13 @@ export function PlaySession({
             <span className="movement-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span>Move</span>
             <span className="movement-keys"><kbd>Shift</kbd></span><span>Sprint</span>
             <span className="movement-keys"><kbd>C</kbd></span><span>Sneak</span>
-            <span className="movement-keys"><kbd>Space</kbd></span><span>Shove</span>
+            <span className="movement-keys"><kbd>Space</kbd></span><span>Shove to knock down</span>
             <span className="movement-keys"><kbd>E</kbd></span><span>Interact</span>
             <span className="movement-keys"><kbd>I</kbd></span><span>Inventory</span>
             <span className="movement-keys"><kbd>M</kbd></span><span>Map</span>
             <span className="movement-keys"><kbd>Esc</kbd></span><span>Pause</span>
           </div>
-          {batEquipped ? (
+          {weaponEquipped ? (
             <div className="movement-hint__summary">
               <span>Hold <kbd>Right Click</kbd> to aim</span>
               <span><kbd>Left Click</kbd> to swing</span>

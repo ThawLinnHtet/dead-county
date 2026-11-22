@@ -142,7 +142,7 @@ Do not pull post-MVP capabilities into a milestone because an asset or design mo
 | Environment | 1 handcrafted isometric neighborhood; roads, yards, sidewalks, fences, static cars and props | Open-world streaming, large cities, generated regions, destruction |
 | Buildings | 21 enterable destinations, seamless entry, operable openings, door pressure, wedges, and one authored lock | Multistory floors, wider lock distribution, and construction |
 | Enemies | 10–20 active zombies, five visual variants, line of sight and sound investigation, FSM and A* navigation | Fast/strong classes, hordes, advanced AI, NPC enemies |
-| Combat | Baseball Bat, ready stance, stamina-costing shove, timed attacks and recovery | Firearms, ammunition, durability, multiple weapons, skills |
+| Combat | Baseball Bat, Kitchen Knife, ready stance, shove knockdown, timed attacks and low Stamina recovery | Firearms, ammunition, durability, skills |
 | Player stats | Health, stamina, hunger, thirst; elapsed survival duration | Temperature, disease/infection, sleep, deep injuries |
 | Items | Baseball Bat, Canned Food, Water Bottle, Bandage, Trail Mix, Canvas Backpack and Door Wedge | Item stacks, materials, cooking, crafting |
 | Inventory | Fixed 12 slots, carry limits, pickup/use/equip/drop | Larger grids, multiple bags or stacks |
@@ -345,28 +345,28 @@ With 20 active zombies, wandering, detection, chase, attack, death and doorway n
 
 ### 8.1 Combat
 
-- **FR-C01–C03:** Melee-only baseball bat; obtain, equip and swing one weapon type.
+- **FR-C01–C03:** Obtain, equip and swing the Baseball Bat or Kitchen Knife. The knife is in the House B kitchen cabinet, swings faster and more quietly, and has shorter reach and lower damage than the bat.
 - **FR-C04–C06:** Attack requires an alive/eligible player and a valid attack state; direction, range, obstruction and hit timing determine zombie damage.
 - **FR-C07–C08:** Clear hit feedback and small knockback when appropriate.
 - **FR-C09–C10:** Zombie attacks affect player health and cooldown prevents unintentional multi-hits.
 - **FR-C11:** Combat input is suppressed while gameplay is paused or a blocking menu/overlay is active.
-- **FR-C12:** Primary mouse button (**Left Click**) on the active game world triggers one eligible baseball-bat attack.
+- **FR-C12:** Primary mouse button (**Left Click**) on the active game world triggers one eligible attack with the equipped melee weapon.
 - **FR-C13:** At the click that starts a swing, convert the pointer to logical world coordinates and lock the direction from the survivor to that point. Use that direction throughout the swing and show the nearest supported facing animation. As the survivor steps, the swing arc moves with them and keeps its heading.
 - **FR-C14:** Attacks use existing combat range, attack arc, line-of-sight/solid-obstacle and cooldown checks; the cursor itself does not select an automatically hit target.
 - **FR-C15:** A click on any React menu, HUD/minimap control, inventory, map, loot panel, dialog or other interactive overlay must **not** trigger a world attack. Clicking while paused, dead, unarmed, during a blocking overlay or while otherwise ineligible also cannot attack.
 - **FR-C16:** When the mouse is directly over the player's world anchor (insufficient direction vector), retain the last valid facing rather than allowing an undefined aim or direction flicker.
-- **FR-C17:** A bat swing can damage at most one zombie, once. At contact, consider living zombies within reach and inside the locked swing arc with a clear strike path. Choose the one with the smallest angle from the centerline. At equal angles choose the nearer zombie. At equal angle and distance choose the lowest stable zombie instance ID in ordinal string order. An empty set produces a miss.
+- **FR-C17:** A melee swing can damage at most one zombie, once. At contact, consider living zombies within reach and inside the locked swing arc with a clear strike path. Choose the one with the smallest angle from the centerline. At equal angles choose the nearer zombie. At equal angle and distance choose the lowest stable zombie instance ID in ordinal string order. An empty set produces a miss.
 - **FR-C18:** From wind-up through contact and the end of recovery, the survivor can take slow steps in any normal movement direction. Starting a swing while sprinting immediately reduces movement to that pace. Sprint becomes available again after recovery if stamina permits.
 - **FR-C19:** Each zombie can damage the survivor once per attack and has its own recovery. Two bites that both land deal both hits, including on the same gameplay step. A survivor who leaves the second zombie's reach before its contact takes only the first hit.
 - **FR-C20:** A nonlethal hit lets an ongoing swing or bite finish. Resolve reach and obstruction at contact using the actors' current positions, including any prior knockback. Death ends the actor's attack.
-- **FR-C21:** A swing costs zero stamina and can start at zero stamina. The usual wind-up, slow steps and recovery still apply.
+- **FR-C21:** A swing costs zero stamina and can start at zero stamina. Starting a swing below 25 Stamina adds 150 ms to its recovery. Slow steps and the normal contact timing still apply.
 - **FR-C22:** Inventory and pause overlays own the entire pointer gesture on their controls, including release over the world after the overlay closes. Clicking Use, a slot, Close or Resume produces zero new attack commands, immediately or on the next gameplay step. A fresh press in the active gameplay world is required for the next swing.
-- **FR-C23:** A hit and a miss use the same bat swing animation and swing sound. Confirmed bat hits add a separate impact sound, recoil, and a restrained blood burst. Confirmed bites play their own sound and mark the survivor's impact point. The impacted actor must be identifiable at default zoom with audio muted. Use the actual damage event to time these cues and keep reduced-motion feedback readable.
+- **FR-C23:** A hit and a miss use the same animation and sound for that weapon. Confirmed melee hits add a separate impact sound, recoil, and a restrained blood burst. Confirmed bites play their own sound and mark the survivor's impact point. The impacted actor must be identifiable at default zoom with audio muted. Use the actual damage event to time these cues and keep reduced-motion feedback readable.
 - **FR-C24:** A zombie bite has a visually distinct anticipation pose before contact, then a bite motion and a readable recovery. The pose is readable at default zoom. Playtest whether a newcomer recognizes it in time to try stepping clear. Damage timing and reach follow the gameplay rules.
-- **FR-C25:** Holding the right mouse button in the world keeps the survivor facing their aim and slows movement. Pressing Space spends Stamina to commit a short shove. The shove selects one visible, in-range target with the deterministic attack ordering and staggers it without damage. It freezes with other attacks during pauses and survives Continue.
-- **FR-C26:** With a bat equipped, holding the right mouse button shows a ground arc at the bat's reach and a small bracket on the currently reachable, visible target selected by the existing attack rules. Solid geometry clips the guide. During wind-up, the bracket clears and the arc follows the committed swing direction until contact. Releasing aim or opening an overlay hides the guide.
+- **FR-C25:** Holding the right mouse button in the world keeps the survivor facing their aim and slows movement. Pressing Space spends Stamina to commit a short shove. The shove selects one visible, in-range target with the deterministic attack ordering and knocks it down briefly without damage. The downed zombie cannot bite or move and cannot be shoved again until it stands. An ordinary melee swing can hit it with the same reach and targeting rules. Knockdown freezes on pause and survives Continue.
+- **FR-C26:** With a weapon equipped, holding the right mouse button shows a ground arc at the weapon's reach and a small bracket on the currently reachable, visible target selected by the existing attack rules. Solid geometry clips the guide. During wind-up, the bracket clears and the arc follows the committed swing direction until contact. Releasing aim or opening an overlay hides the guide.
 - **FR-C26:** In the ready stance, side steps are slower than forward steps and back steps are slower than side steps. Shove recovery delays Stamina regeneration. Apply only the portion of a shove's displacement that fits before solid geometry.
-- Unarmed is an allowed equipment **display state**; a full unarmed combat damage system is **not** mandatory. Exactly one weapon item type is supported.
+- Unarmed is an allowed equipment **display state**; a full unarmed combat damage system is **not** mandatory. The Baseball Bat and Kitchen Knife share the same equipment slot.
 - No firearm, ammunition, critical hit trees, weapon durability, blocking skill or limb-specific simulation.
 
 **House B playtest target.** Give a survivor the bat and place one standard zombie near the entrance. A player who reads its wind-up and times their swings should be able to handle it. Repeat with a second zombie close enough to reach the survivor during a swing at the first. Withdrawing to separate them should be a better bet than standing in reach of both. Use this scene to tune reach, damage and recovery.
@@ -417,7 +417,8 @@ With 20 active zombies, wandering, detection, chase, attack, death and doorway n
 
 | Item ID (illustrative) | Display name | Gameplay action |
 |---|---|---|
-| `baseball_bat` | Baseball Bat | Equip for melee combat |
+| `baseball_bat` | Baseball Bat | Equip for longer melee reach and heavier hits |
+| `kitchen_knife` | Kitchen Knife | Equip for faster melee swings at close range |
 | `canned_food` | Canned Food | Consume to lower Hunger severity |
 | `water_bottle` | Water Bottle | Consume to lower Thirst severity |
 | `bandage` | Bandage | Use to restore Health |
@@ -502,7 +503,7 @@ The earlier PRD's **“world map after MVP”** classification is superseded. Th
 |---|---|
 | `W` `A` `S` `D` | Move up, left, down or right on screen. Combine keys for diagonals. |
 | `Shift` + movement | Sprint while Stamina permits. After exhaustion, release and press Shift again. |
-| `Left Mouse Click` (on game world) | Baseball bat melee attack, if alive, equipped, unpaused, and eligible |
+| `Left Mouse Click` (on game world) | Equipped melee weapon attack, if alive, equipped, unpaused, and eligible |
 | Move mouse over game world | Aim/face toward mouse in logical world space; no free-aim projectiles or auto-targeting |
 | `Space` | Unassigned in MVP (push/shove is a possible future feature) |
 | `E` | Search the indicated container or pick up the indicated dropped item |

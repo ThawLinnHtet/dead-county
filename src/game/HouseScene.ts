@@ -4,9 +4,9 @@ import {
   actorFrameHeight, actorFrameWidth, actorOrigin, createSurvivorDirectionTexture, createZombieWalkTexture,
   survivorDirectionKey, zombieLooks, zombieWalkFrame, zombieWalkKey,
 } from './actorMotion';
-import { batConfig, damageCueMs, shoveConfig } from './combat';
+import { batConfig, damageCueMs, equippedMeleeKind, meleeWeapons, recoveryDuration, shoveConfig } from './combat';
 import type { FootSurface, GameAudio } from './gameAudio';
-import { drawBat, drawBatAim, drawBiteArms, drawDamageCue, drawShove } from './combatArt';
+import { drawMeleeWeapon, drawMeleeAim, drawBiteArms, drawDamageCue, drawShove } from './combatArt';
 import femaleSurvivorUrl from './survivor-female.png';
 import { drawFurniture } from './drawFurniture';
 import { drawHouse } from './drawHouse';
@@ -175,7 +175,7 @@ export class HouseScene extends Phaser.Scene {
       if (paused) {
         this.pointer = null;
         this.showInteractionPrompt(null);
-        drawBatAim(this.aimArc, this.aimBracket, null);
+        drawMeleeAim(this.aimArc, this.aimBracket, null);
       }
     };
     this.droppedItemArt.clear();
@@ -225,7 +225,7 @@ export class HouseScene extends Phaser.Scene {
     this.impactArt.draw(state.activeTimeMs);
     this.drawSurvivor(state);
     this.drawZombies(state);
-    drawBatAim(this.aimArc, this.aimBracket, this.pointer ? this.coordinator.getBatAimPreview() : null);
+    drawMeleeAim(this.aimArc, this.aimBracket, this.pointer ? this.coordinator.getMeleeAimPreview() : null);
     this.drawOcclusion(state, Math.min(1, elapsed / 70));
     this.drawSoundCue(state);
     this.drawInteractionPrompt();
@@ -284,7 +284,7 @@ export class HouseScene extends Phaser.Scene {
       this.pointer = { clientX: event.clientX, clientY: event.clientY };
       this.coordinator.setReady(true);
       this.coordinator.aimAt(target);
-    } else if (event.button === 0) this.coordinator.startBatSwing(target);
+    } else if (event.button === 0) this.coordinator.startMeleeSwing(target);
   };
 
   playOpeningFeedback(target: Extract<InteractionTarget, { kind: 'opening' }>, locked: boolean) {
@@ -371,14 +371,15 @@ export class HouseScene extends Phaser.Scene {
     const breath = idle && !this.reduceMotion ? Math.sin(activeTimeMs / 420) : 0;
     const crouching = this.coordinator.isSneaking();
     const height = (bed ? .78 : crouching ? .86 : ready ? .94 : 1) + breath * .022;
-    const timing = attack?.kind === 'shove' ? shoveConfig : batConfig;
+    const weapon = equippedMeleeKind(survivor);
+    const timing = attack?.kind === 'shove' ? shoveConfig : weapon ? meleeWeapons[weapon] : batConfig;
     let lean = (survivor.gait === 'sprint' ? 8 : breath * 1.35) * side;
     if (survivor.steppingBack) lean = -4 * side;
     if (bed) lean = -Math.atan2(tileWidth, tileHeight) * 180 / Math.PI;
     if (fallen) lean = -side * Phaser.Math.Linear(28, 83, this.timeSinceSurvivorDeath / survivorDeathAnimationMs);
     else if (attack?.phase === 'windup') lean = -11 * side * (1 - attack.remainingMs / timing.windupMs);
     else if (attack?.phase === 'contact') lean = Phaser.Math.Linear(11, 21, 1 - attack.remainingMs / timing.contactMs) * side;
-    else if (attack?.phase === 'recovery') lean = 21 * side * attack.remainingMs / timing.recoveryMs;
+    else if (attack?.phase === 'recovery') lean = 21 * side * attack.remainingMs / recoveryDuration(timing, attack.tired);
     const biteAge = survivor.lastBiteAtMs === null
       ? Infinity : activeTimeMs + this.timeSinceSurvivorDeath - survivor.lastBiteAtMs;
     const hurt = biteAge < damageCueMs;
@@ -418,8 +419,9 @@ export class HouseScene extends Phaser.Scene {
     }
     const art = this.survivorEffects.clear().setDepth(y + .03);
     if (!fallen && attack?.kind === 'shove') drawShove(art, feet, attack);
-    else if (!fallen && !sleep && survivor.equippedWeaponId) {
-      drawBat(art, feet, survivor.facingLeft, attack, lean, height, ready ? survivor.facing : undefined, female, this.reduceMotion);
+    else if (!fallen && !sleep && weapon) {
+      drawMeleeWeapon(art, feet, survivor.facingLeft, attack, lean, height, ready ? survivor.facing : undefined,
+        female, this.reduceMotion, weapon);
     }
     if (hurt) drawDamageCue(art, feet, biteAge, true, fallen);
   }
@@ -449,11 +451,12 @@ export class HouseScene extends Phaser.Scene {
       const { x, y } = feet;
       const { attack } = zombie;
       const dead = zombie.health === 0;
+      const down = attack?.kind === 'knockdown';
       const hitAge = zombie.lastBatHitAtMs === null
         ? Infinity : activeTimeMs - zombie.lastBatHitAtMs;
       const hurt = hitAge < damageCueMs;
       const side = zombie.facingLeft ? -1 : 1;
-      const reacting = hurt && !dead && !this.reduceMotion && hitAge < 176;
+      const reacting = hurt && !down && !dead && !this.reduceMotion && hitAge < 176;
       const walking = zombie.moving && !attack && !dead && !reacting;
       const idle = !walking && !attack && !dead && !reacting && !this.reduceMotion;
       const idleTime = activeTimeMs + art.idleOffset;
@@ -461,7 +464,10 @@ export class HouseScene extends Phaser.Scene {
       const height = idle ? 1 + .022 * Math.sin(idleTime / 390) : 1;
       let lean = walking ? 1.5 * side : 2 * sway;
       if (dead) lean = -side * Phaser.Math.Linear(25, 85, Math.min(1, hitAge / 210));
-      else if (attack?.kind === 'stagger') lean = -side * 29 * attack.remainingMs / shoveConfig.staggerMs;
+      else if (down) {
+        const fall = Math.min(1, (shoveConfig.knockdownMs - attack.remainingMs) / 155, attack.remainingMs / 230);
+        lean = -side * 83 * (this.reduceMotion ? 1 : fall);
+      } else if (attack?.kind === 'stagger') lean = -side * 29 * attack.remainingMs / shoveConfig.staggerMs;
       else if (attack?.phase === 'windup') lean = -side * (9 + 9 * (1 - attack.remainingMs / zombieConfig.bite.windupMs));
       else if (attack?.phase === 'contact') lean = 23 * side;
       else if (attack?.phase === 'recovery') lean = 23 * side * attack.remainingMs / zombieConfig.bite.recoveryMs;
@@ -486,7 +492,7 @@ export class HouseScene extends Phaser.Scene {
       else art.sprite.clearTint();
       art.shadow.setPosition(x, y - 1).setDepth(y - .1);
       art.effects.clear().setDepth(y + .03);
-      if (attack && attack.kind !== 'stagger') drawBiteArms(art.effects, posedFeet, attack, lean);
+      if (attack && !attack.kind) drawBiteArms(art.effects, posedFeet, attack, lean);
       if (hurt) drawDamageCue(art.effects, posedFeet, hitAge, false, dead);
       else if (attack?.kind === 'stagger' && attack.remainingMs > shoveConfig.staggerMs - 130) {
         drawDamageCue(art.effects, feet, (shoveConfig.staggerMs - attack.remainingMs) * 1.6, false, false);
@@ -503,7 +509,7 @@ export class HouseScene extends Phaser.Scene {
     const indoors = next.occupiedHouseId !== null;
     this.audio.setEnvironment(indoors, neighborhoodDarkness(activeTimeMs) > .55);
     if (previous.survivor.attack?.phase === 'windup' && survivor.attack?.phase === 'contact' && !survivor.attack.kind) {
-      this.audio.swing();
+      this.audio.swing(equippedMeleeKind(survivor) === 'kitchen_knife');
     }
     let blockers: typeof openings | undefined;
     const clear = (from: WorldPoint, to: WorldPoint) => {
@@ -547,7 +553,7 @@ export class HouseScene extends Phaser.Scene {
             timeMs: contact.timeMs, direction: recoilDirection(project(contact.origin), project(contact.position)),
           });
           this.impactArt.hit(contact.position, contact.origin, contact.timeMs, 'bat', clear);
-          this.audio.impact(panAt(contact.position));
+          this.audio.impact(panAt(contact.position), equippedMeleeKind(survivor) === 'kitchen_knife');
         }
       }
       if (zombie.health === 0) continue;
@@ -557,7 +563,7 @@ export class HouseScene extends Phaser.Scene {
       const footstep = stepped(actorBefore.walkDistance, zombie.walkDistance, .57);
       if (footstep) this.audio.footsteps(pan, .095 * sound.volume, false,
         footSurface(zombie.position, houses.some((house) => contains(house, zombie.position))), sound.muffled);
-      if (zombie.attack?.kind === 'stagger' && actorBefore.attack?.kind !== 'stagger') {
+      if (zombie.attack?.kind === 'knockdown' && actorBefore.attack?.kind !== 'knockdown') {
         this.audio.shoveHit(pan, .23 * sound.volume);
       }
       const offset = index * 911;

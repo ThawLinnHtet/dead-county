@@ -1,14 +1,14 @@
 import type Phaser from 'phaser';
-import { batConfig, damageCueMs, shoveConfig } from './combat';
-import type { AttackState } from './combat';
-import type { BatAimPreview } from './gameCoordinator';
+import { damageCueMs, meleeWeapons, recoveryDuration, shoveConfig } from './combat';
+import type { AttackState, MeleeKind } from './combat';
+import type { MeleeAimPreview } from './gameCoordinator';
 import { project } from './world';
 import type { WorldPoint } from './world';
 import { zombieConfig } from './zombie';
 
 type Graphics = Phaser.GameObjects.Graphics;
 
-export function drawBatAim(reach: Graphics, bracket: Graphics, preview: BatAimPreview | null) {
+export function drawMeleeAim(reach: Graphics, bracket: Graphics, preview: MeleeAimPreview | null) {
   reach.clear();
   bracket.clear();
   if (!preview) return;
@@ -51,10 +51,13 @@ function screenAngle(direction: WorldPoint) {
   return Math.atan2(y, x);
 }
 
-export function drawBat(
+export function drawMeleeWeapon(
   art: Graphics, feet: WorldPoint, facingLeft: boolean, attack: AttackState | null, lean: number, height: number,
-  readyAim: WorldPoint | undefined, female: boolean, reducedMotion: boolean,
+  readyAim: WorldPoint | undefined, female: boolean, reducedMotion: boolean, weapon: MeleeKind,
 ) {
+  const timing = meleeWeapons[weapon];
+  const knife = weapon === 'kitchen_knife';
+  const length = knife ? 15 : 28;
   const side = facingLeft ? -1 : 1;
   const { x, y } = feet;
   let gripX = x + side * 8;
@@ -73,7 +76,7 @@ export function drawBat(
       from + Math.atan2(Math.sin(to - from), Math.cos(to - from)) * progress;
     switch (attack.phase) {
       case 'windup': {
-        const progress = 1 - attack.remainingMs / batConfig.windupMs;
+        const progress = 1 - attack.remainingMs / timing.windupMs;
         const loaded = aim - 1.5 * side;
         const release = Math.max(0, (progress - .72) / .28) ** 1.7;
         const gather = Math.min(1, progress / .62);
@@ -84,19 +87,19 @@ export function drawBat(
         break;
       }
       case 'contact': {
-        const progress = 1 - attack.remainingMs / batConfig.contactMs;
+        const progress = 1 - attack.remainingMs / timing.contactMs;
         gripX = x + Math.cos(aim) * 13;
         gripY = y - 31 + Math.sin(aim) * 11;
         angle = aim + .88 * (1 - (1 - progress) ** 2) * side;
         if (!reducedMotion) {
           const trail = art.lineStyle(2, 0xe2be8a, .43 * (1 - progress)).beginPath();
-          trail.arc(gripX, gripY, 27, angle - .42 * side, angle, side < 0);
+          trail.arc(gripX, gripY, length - 1, angle - .42 * side, angle, side < 0);
           trail.strokePath();
         }
         break;
       }
       case 'recovery': {
-        const remaining = attack.remainingMs / batConfig.recoveryMs;
+        const remaining = attack.remainingMs / recoveryDuration(timing, attack.tired);
         gripX = x + side * 8 * (1 - remaining) + Math.cos(aim) * 13 * remaining;
         gripY = y - 25 * (1 - remaining) + (-31 + Math.sin(aim) * 11) * remaining;
         angle = blendAngle(idleAngle, aim + .88 * side, remaining);
@@ -105,8 +108,8 @@ export function drawBat(
     }
   }
   if (!attack) gripX += Math.sin(lean * Math.PI / 180) * 24;
-  const tipX = gripX + Math.cos(angle) * 28;
-  const tipY = gripY + Math.sin(angle) * 28;
+  const tipX = gripX + Math.cos(angle) * length;
+  const tipY = gripY + Math.sin(angle) * length;
   if (readyAim || attack) {
     const shoulderX = x + side * 5 + Math.sin(lean * Math.PI / 180) * 30;
     const shoulderY = y - 34 * height;
@@ -118,7 +121,7 @@ export function drawBat(
       .lineBetween(elbowX, elbowY, gripX, gripY);
   }
   art.lineStyle(6, 0x342417).lineBetween(gripX, gripY, tipX, tipY);
-  art.lineStyle(3, 0xbb8956).lineBetween(gripX, gripY - .5, tipX, tipY - .5);
+  art.lineStyle(3, knife ? 0xc2cbd0 : 0xbb8956).lineBetween(gripX, gripY - .5, tipX, tipY - .5);
   art.lineStyle(4, 0x6c4832).lineBetween(gripX, gripY, gripX + Math.cos(angle) * 7, gripY + Math.sin(angle) * 7);
   art.fillStyle(0xb68968).fillCircle(gripX, gripY, 2.2);
 }

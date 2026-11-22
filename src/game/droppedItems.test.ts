@@ -39,7 +39,7 @@ test('drop and E recovery move the same equipped bat between the world and the f
   assert.deepEqual(game.getState().droppedItems, []);
   assert.strictEqual(game.getState().survivor.inventory[0], bat);
   assert.equal(game.getState().survivor.equippedWeaponId, null);
-  assert.equal(game.startBatSwing(position), false);
+  assert.equal(game.startMeleeSwing(position), false);
 });
 
 test('a drop beside a wall finds the nearest free space on the reachable side', () => {
@@ -81,7 +81,7 @@ test('wind-up and recovery protect the equipped bat while another carried item c
   const bottle = game.getState().containers[cabinet]![0]!;
   assert.deepEqual(game.transferItem(cabinet, bottle.id), { status: 'transferred', slot: 1 });
   game.closeInventoryPanel();
-  assert.equal(game.startBatSwing(position), true);
+  assert.equal(game.startMeleeSwing(position), true);
 
   for (const phase of ['windup', 'recovery'] as const) {
     assert.equal(game.getState().survivor.attack?.phase, phase);

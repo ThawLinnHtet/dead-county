@@ -4,7 +4,10 @@ import { districtBuildings } from './district.ts';
 
 export const itemDefinitions = {
   baseball_bat: {
-    name: 'Baseball Bat', category: 'Melee Weapon', description: 'A sturdy wooden bat. Equip it for melee attacks.', weight: 1.3,
+    name: 'Baseball Bat', category: 'Melee Weapon', description: 'Longer reach and a harder hit. Takes more time between swings.', weight: 1.3,
+  },
+  kitchen_knife: {
+    name: 'Kitchen Knife', category: 'Melee Weapon', description: 'Quick, quiet swings. Get closer than you would with the bat.', weight: .35,
   },
   water_bottle: {
     name: 'Water Bottle',
@@ -88,6 +91,8 @@ export const starterStock: ContainerStock = {
   house_c_kitchen_cabinet: ['canned_food', 'water_bottle'],
 };
 
+export const knifeCabinetId = 'house_b_kitchen_cabinet';
+
 export const expandedStock: ContainerStock = {
   ...starterStock,
   ...Object.fromEntries(districtBuildings.map(({ id, unexpandedStock }) => [`${id}_cabinet`, unexpandedStock])),
@@ -95,6 +100,7 @@ export const expandedStock: ContainerStock = {
 
 export const authoredStock: ContainerStock = {
   ...starterStock,
+  [knifeCabinetId]: [...starterStock[knifeCabinetId]!, 'kitchen_knife'],
   house_b_living_cabinet: [...starterStock.house_b_living_cabinet!, 'backpack', 'door_wedge'],
   ...Object.fromEntries(districtBuildings.map(({ id, stock }) => [`${id}_cabinet`, stock])),
 };

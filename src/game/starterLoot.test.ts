@@ -102,7 +102,7 @@ test('quick slots equip visible bats without swinging and inspect consumables wi
   assert.equal(game.getState().survivor.attack, null);
   assert.equal(game.activateQuickSlot(0, bat.id), 'equipped');
   assert.equal(game.getState().survivor.equippedWeaponId, bat.id);
-  assert.equal(game.startBatSwing({ x: 12.9, y: 9.15 }), true);
+  assert.equal(game.startMeleeSwing({ x: 12.9, y: 9.15 }), true);
   const swing = game.getState();
   assert.equal(game.activateQuickSlot(2, spareBat.id), 'unavailable');
   assert.strictEqual(game.getState(), swing);

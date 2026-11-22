@@ -96,7 +96,7 @@ test('a locked doorway must be the authored workshop door and must be closed', (
   const snapshot = {
     ...old, closedOpeningIds: openWorkshop,
     containers: Object.fromEntries(Object.entries(containers).map(([id, items]) => [
-      id, items.filter(({ kind }) => kind !== workshopLock.keyKind && kind !== 'board' && kind !== 'hammer'),
+      id, items.filter(({ kind }) => kind !== workshopLock.keyKind && kind !== 'board' && kind !== 'hammer' && kind !== 'kitchen_knife'),
     ])),
   };
   const previous = { ...saveRecord(1, { id: runId, snapshot }), schemaVersion: 4 };
@@ -105,6 +105,6 @@ test('a locked doorway must be the authored workshop door and must be closed', (
   assert.deepEqual(read.run.snapshot.lockedDoorIds, []);
   assert.deepEqual(read.run.snapshot.closedOpeningIds, openWorkshop);
   assert.deepEqual(Object.fromEntries(Object.entries(read.run.snapshot.containers).map(([id, items]) => [
-    id, items.filter(({ kind }) => kind !== 'board' && kind !== 'hammer'),
+    id, items.filter(({ kind }) => kind !== 'board' && kind !== 'hammer' && kind !== 'kitchen_knife'),
   ])), snapshot.containers);
 });

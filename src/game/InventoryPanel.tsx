@@ -3,6 +3,7 @@ import type { DragEvent, KeyboardEvent } from 'react';
 import type { GameAudio } from './gameAudio';
 import type { GameCoordinator, StorageLocation } from './gameCoordinator';
 import { ItemIcon } from './ItemIcon';
+import { isMeleeWeapon } from './combat';
 import { backpackSlots, carriedLoad, itemDefinitions, itemWeight } from './items';
 import type { ItemInstance } from './items';
 import { roundSurvivalStat, survivalStatNames } from './survival';
@@ -52,7 +53,7 @@ export function InventoryPanel({ coordinator, audio, initialItemId }: {
   const firstEmpty = inventory.indexOf(null);
   const full = firstEmpty === -1;
   const occupiedSlots = inventory.filter(Boolean).length;
-  const itemUse = selection?.source === 'inventory' && selected && selected.kind !== 'baseball_bat'
+  const itemUse = selection?.source === 'inventory' && selected && !isMeleeWeapon(selected.kind)
     ? coordinator.getItemUse(slot, selected.id) : null;
   const useReason = itemUse?.status === 'no_benefit' ? itemUse.reason : null;
   const packSelected = selected?.kind === 'backpack';
@@ -292,7 +293,7 @@ export function InventoryPanel({ coordinator, audio, initialItemId }: {
     }
   }
 
-  const equipLocked = swinging && selected?.kind === 'baseball_bat';
+  const equipLocked = swinging && !!selected && isMeleeWeapon(selected.kind);
   const dropLocked = swinging && selected?.id === equippedId;
   const canTransfer = !!selected && selection?.source === 'loot' && !full;
   const transferHint = full ? 'Inventory full'
@@ -436,7 +437,7 @@ export function InventoryPanel({ coordinator, audio, initialItemId }: {
               {selection?.source === 'inventory' && (
                 <>
                   <div className="inventory-actions">
-                    {selected.kind === 'baseball_bat' || packSelected ? (
+                    {isMeleeWeapon(selected.kind) || packSelected ? (
                       <button
                         className="inventory-action inventory-action--primary"
                         type="button"

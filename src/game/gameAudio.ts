@@ -168,7 +168,11 @@ export function createGameAudio() {
       night = dark;
       mixAmbience();
     },
-    swing() {
+    swing(knife = false) {
+      if (knife) {
+        playNoise(.073, 2450, .15);
+        return;
+      }
       playNoise(.122, 1850, .20);
       playNoise(.082, 640, .09);
     },
@@ -220,7 +224,12 @@ export function createGameAudio() {
     shoveHit(pan: number, volume: number) {
       playNoise(.11, 390, volume, pan);
     },
-    impact(pan: number) {
+    impact(pan: number, knife = false) {
+      if (knife) {
+        playNoise(.067, 1600, .32, pan);
+        thud(146, .082, .22, pan);
+        return;
+      }
       playNoise(.034, 2550, .46, pan);
       playNoise(.118, 690, .38, pan);
       thud(109, .155, .40, pan);
