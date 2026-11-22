@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { alderShelter } from './district.ts';
 import { shoveConfig } from './combat.ts';
 import { createGameCoordinator, restoreGameCoordinator } from './gameCoordinator.ts';
 import type { GameCoordinator } from './gameCoordinator.ts';
-import { canOccupy, project } from './world.ts';
+import { canOccupy, initiallyClosed, project } from './world.ts';
 import { createZombies } from './zombie.ts';
 
 const inside = { x: 13.3, y: 8.28 };
@@ -201,4 +202,108 @@ test('a heavy load drains sprint stamina faster and recovers slower at the same 
   assert.deepEqual(beforeHeavy.position, beforeLight.position);
   assert.ok(beforeHeavy.stamina < beforeLight.stamina);
   assert.ok(heavy.step(120).survivor.stamina - beforeHeavy.stamina < light.step(120).survivor.stamina - beforeLight.stamina);
+});
+
+const alderInside = { x: 68.5, y: 7.2 };
+const alderOutside = { x: 68.5, y: 8.58 };
+const board = { id: 'board', kind: 'board' } as const;
+const hammer = { id: 'hammer', kind: 'hammer' } as const;
+const toolsInPockets = [board, hammer, ...Array.from({ length: 10 }, () => null)];
+
+test('a Board requires a reachable closed Alder door from inside and a carried Hammer', () => {
+  const { doorId, houseId } = alderShelter;
+  const base = createGameCoordinator({ position: alderInside, zombieSpawns: [] }).getState();
+  for (const candidate of [
+    { position: alderOutside, occupiedHouseId: null, closedOpeningIds: initiallyClosed, hasHammer: true },
+    { position: { x: 68.5, y: 4.8 }, occupiedHouseId: houseId, closedOpeningIds: initiallyClosed, hasHammer: true },
+    { position: alderInside, occupiedHouseId: houseId, closedOpeningIds: initiallyClosed.filter((id) => id !== doorId), hasHammer: true },
+    { position: alderInside, occupiedHouseId: houseId, closedOpeningIds: initiallyClosed, hasHammer: false },
+  ]) {
+    const { position, occupiedHouseId, closedOpeningIds, hasHammer } = candidate;
+    const inventory = [board, hasHammer ? hammer : null, ...toolsInPockets.slice(2)];
+    const game = restoreGameCoordinator({ ...base, occupiedHouseId, closedOpeningIds, survivor: { ...base.survivor, position, inventory } });
+    game.toggleInventory();
+    const before = game.getState();
+    assert.equal(game.useItem(0, board.id).status, 'no_benefit');
+    assert.strictEqual(game.getState(), before);
+  }
+
+  const pack = { id: 'pack', kind: 'backpack' } as const;
+  const wedge = { id: 'wedge', kind: 'door_wedge' } as const;
+  const setup = createGameCoordinator({
+    position: alderInside, zombieSpawns: [{ id: 'listener', position: alderOutside, destination: alderOutside }],
+  }).getState();
+  const game = restoreGameCoordinator({
+    ...setup, packs: { [pack.id]: [hammer] },
+    survivor: { ...setup.survivor, inventory: [board, pack, wedge, ...toolsInPockets.slice(3)], equippedPackId: pack.id },
+  });
+  const staleDoor = game.getInteractionTarget();
+  assert.equal(staleDoor?.id, doorId);
+  game.toggleInventory();
+  assert.equal(game.useItem(0, board.id).status, 'barricaded');
+  assert.equal(game.useItem(0, board.id).status, 'unavailable');
+  assert.equal(game.useItem(2, wedge.id).status, 'no_benefit');
+  const installed = game.getState();
+  assert.deepEqual(installed.survivor.inventory.slice(0, 3), [null, pack, wedge]);
+  assert.deepEqual(installed.packs[pack.id], [hammer]);
+  const heard = installed.zombies[0]!.behavior;
+  assert.ok(heard.kind === 'investigate');
+  assert.deepEqual(heard.destination, alderInside);
+  assert.strictEqual(game.step(10000), installed);
+
+  game.closeInventoryPanel();
+  assert.equal(game.interact(staleDoor!).status, 'unavailable');
+  const insideDoor = game.getInteractionTarget();
+  assert.ok(insideDoor?.kind === 'opening' && insideDoor.barricade === 'inside');
+  const outsideGame = restoreGameCoordinator({
+    ...installed, occupiedHouseId: null, survivor: { ...installed.survivor, position: alderOutside },
+  });
+  const outsideDoor = outsideGame.getInteractionTarget();
+  assert.ok(outsideDoor?.kind === 'opening' && outsideDoor.barricade === 'outside');
+  assert.equal(outsideGame.interact(outsideDoor).status, 'barricade_blocked');
+  assert.equal(game.interact(insideDoor).status, 'barricade_removed');
+  assert.ok(game.getState().closedOpeningIds.includes(doorId));
+  assert.equal(game.getState().doorDefenses[doorId], undefined);
+
+  game.toggleInventory();
+  assert.equal(game.useItem(2, wedge.id).status, 'wedged');
+  const wedged = game.getState();
+  const boarded = restoreGameCoordinator({ ...wedged, survivor: { ...wedged.survivor, inventory: [board, pack, null, ...toolsInPockets.slice(3)] } });
+  boarded.toggleInventory();
+  assert.equal(boarded.useItem(0, board.id).status, 'no_benefit');
+  assert.equal(boarded.getState().survivor.inventory[0], board);
+});
+
+test('barricade pressure holds through a pause and a breach wakes the sleeper', () => {
+  const { doorId } = alderShelter;
+  const setup = createGameCoordinator({
+    position: { x: 69.6, y: 4.8 },
+    zombieSpawns: [
+      { id: 'one', position: { x: 68.2, y: 8.58 }, destination: alderOutside },
+      { id: 'two', position: { x: 68.85, y: 8.58 }, destination: alderOutside },
+    ],
+  }).getState();
+  const game = restoreGameCoordinator({
+    ...setup, sleep: { bedId: 'lot_1_2_furnishing', remainingMs: 10000 },
+    doorDefenses: { [doorId]: { wedged: false, barricaded: true, pressureMs: 3400 } },
+    zombies: setup.zombies.map((zombie) => ({
+      ...zombie, behavior: { kind: 'chase', graceRemainingMs: 4100, lastKnownPosition: alderInside },
+    })),
+  });
+  game.handleEscape();
+  const paused = game.getState();
+  assert.strictEqual(game.step(5000), paused);
+  game.resume();
+  const damaged = game.step(5);
+  assert.ok(damaged.sleep);
+  assert.ok(damaged.doorDefenses[doorId]!.pressureMs > 3400);
+  const door = restoreGameCoordinator({
+    ...damaged, sleep: null, survivor: { ...damaged.survivor, position: alderInside },
+  }).getInteractionTarget();
+  assert.ok(door?.kind === 'opening' && door.strain !== 'intact');
+  for (let frame = 0; frame < 50 && game.getState().sleep; frame += 1) game.step(25);
+  assert.equal(game.getState().sleep, null);
+  assert.equal(game.getState().restNotice, 'danger');
+  assert.equal(game.getState().doorDefenses[doorId], undefined);
+  assert.ok(!game.getState().closedOpeningIds.includes(doorId));
 });

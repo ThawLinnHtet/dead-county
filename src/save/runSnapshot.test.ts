@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator.ts';
-import { workshopLock } from '../game/district.ts';
+import { alderShelter, workshopLock } from '../game/district.ts';
 import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
-import { expandedStock, seedContainers, starterStock } from '../game/items.ts';
+import { containerSlots, expandedStock, seedContainers, starterStock } from '../game/items.ts';
 import { initiallyClosed, starterZombieSpawns, zombieSpawns } from '../game/world.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
@@ -99,9 +99,9 @@ test('the current schema preserves equipped gear and migrates schema three with 
   const {
     packs: _packs, sleep: _sleep, lockedDoorIds: _locks, containers, survivor: { fatigue: _fatigue, ...oldSurvivor }, ...rest
   } = saved;
-  const oldContainers = {
-    ...containers, [workshopLock.keyCabinetId]: containers[workshopLock.keyCabinetId]!.filter(({ kind }) => kind !== workshopLock.keyKind),
-  };
+  const oldContainers = Object.fromEntries(Object.entries(containers).map(([id, items]) => [
+    id, items.filter(({ kind }) => kind !== workshopLock.keyKind && kind !== 'board' && kind !== 'hammer'),
+  ]));
   const legacy = inspectSaveRecord({
     ...record, schemaVersion: 3, run: { id: runId, snapshot: { ...rest, containers: oldContainers, survivor: oldSurvivor } },
   });
@@ -171,4 +171,63 @@ test('a committed snapshot restores changed survivor, inventory, loot, drops and
   assert.equal(state.survivor.gait, 'idle');
   restored.step(16);
   assert.deepEqual(restored.getState().survivor.position, state.survivor.position);
+});
+
+test('schema five supplies migrate once without moving the contents of a full cupboard', () => {
+  const original = captureRun(createGameCoordinator());
+  const { boardCabinetId, doorId } = alderShelter;
+  const containers = Object.fromEntries(Object.entries(original.containers).map(([id, items]) => [
+    id, items.filter(({ kind }) => kind !== 'board' && kind !== 'hammer'),
+  ]));
+  const filled = [...containers[boardCabinetId]!];
+  for (const [id, contents] of Object.entries(containers)) {
+    if (id === boardCabinetId) continue;
+    filled.push(...contents.splice(0, containerSlots - filled.length));
+  }
+  containers[boardCabinetId] = filled;
+  const previous = { ...saveRecord(2, { id: runId, snapshot: { ...original, containers } }), schemaVersion: 5 };
+  const migrated = inspectSaveRecord(previous);
+  assert.equal(migrated.kind, 'ready');
+  const { snapshot } = migrated.run;
+  assert.deepEqual(snapshot.containers[boardCabinetId], filled);
+  assert.equal(snapshot.doorDefenses?.[doorId], undefined);
+  assert.equal(Object.values(snapshot.containers).flat().filter(({ kind }) => kind === 'board').length, 1);
+  assert.equal(Object.values(snapshot.containers).flat().filter(({ kind }) => kind === 'hammer').length, 1);
+  const reread = inspectSaveRecord(saveRecord(3, migrated.run));
+  assert.equal(reread.kind, 'ready');
+  assert.deepEqual(reread.run.snapshot.containers, snapshot.containers);
+});
+
+test('Continue restores a strained barricade and rejects impossible defenses', () => {
+  const original = captureRun(createGameCoordinator({ position: { x: 68.5, y: 7.2 } }));
+  const { hammerCabinetId, boardCabinetId, doorId, windowId } = alderShelter;
+  const hammer = original.containers[hammerCabinetId]!.find(({ kind }) => kind === 'hammer')!;
+  const board = original.containers[boardCabinetId]!.find(({ kind }) => kind === 'board')!;
+  const coordinator = restoreGameCoordinator({
+    ...original,
+    containers: {
+      ...original.containers,
+      [hammerCabinetId]: original.containers[hammerCabinetId]!.filter((item) => item !== hammer),
+      [boardCabinetId]: original.containers[boardCabinetId]!.filter((item) => item !== board),
+    },
+    survivor: { ...original.survivor, inventory: [board, hammer, ...original.survivor.inventory.slice(2)] },
+  });
+  coordinator.toggleInventory();
+  assert.equal(coordinator.useItem(0, board.id).status, 'barricaded');
+  coordinator.closeInventoryPanel();
+  const captured = captureRun(coordinator);
+  const defense = { wedged: false, barricaded: true, pressureMs: 3500 } as const;
+  const read = (snapshot: typeof captured) => inspectSaveRecord(saveRecord(2, { id: runId, snapshot }));
+  const continued = read({ ...captured, doorDefenses: { [doorId]: defense } });
+  assert.equal(continued.kind, 'ready');
+  const restored = restoreGameCoordinator(continued.run.snapshot);
+  assert.deepEqual(restored.getState().doorDefenses[doorId], defense);
+  assert.deepEqual(restored.getState().survivor.inventory.slice(0, 2), [null, hammer]);
+  assert.equal(read({ ...captured, doorDefenses: { [windowId]: defense } }).kind, 'damaged');
+  assert.equal(read({ ...captured, doorDefenses: { [doorId]: { ...defense, wedged: true } } }).kind, 'damaged');
+  assert.equal(read({ ...captured, doorDefenses: { [doorId]: { ...defense, pressureMs: 5300 } } }).kind, 'damaged');
+  assert.equal(read({
+    ...captured, doorDefenses: { [doorId]: defense }, containers: original.containers,
+    survivor: original.survivor,
+  }).kind, 'damaged');
 });

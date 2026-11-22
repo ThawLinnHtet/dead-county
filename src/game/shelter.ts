@@ -5,6 +5,7 @@ import type { ZombieState } from './zombie.ts';
 export interface DoorDefense {
   readonly pressureMs: number;
   readonly wedged: boolean;
+  readonly barricaded?: true;
 }
 
 export type DoorDefenses = Readonly<Partial<Record<string, DoorDefense>>>;
@@ -15,13 +16,13 @@ export function openingCenter({ x, y, width, height }: MapObject): WorldPoint {
   return { x: x + width / 2, y: y + height / 2 };
 }
 
-export function doorResistance(wedged: boolean) {
-  return wedged ? 4200 : 1450;
+export function doorResistance(defense?: Pick<DoorDefense, 'wedged' | 'barricaded'>) {
+  return defense?.barricaded ? 5300 : defense?.wedged ? 4200 : 1450;
 }
 
 export function doorStrain(defense: DoorDefense | undefined): DoorStrain {
   if (!defense) return 'intact';
-  const fraction = defense.pressureMs / doorResistance(defense.wedged);
+  const fraction = defense.pressureMs / doorResistance(defense);
   return fraction >= .72 ? 'failing' : fraction >= .3 ? 'straining' : 'intact';
 }
 
@@ -55,13 +56,13 @@ export function advanceDoorPressure(
     );
     if (!pressers.length) continue;
     updated ??= { ...defenses };
-    const { wedged = false, pressureMs = 0 } = updated[door.name] ?? {};
-    const pressure = pressureMs + elapsed * Math.min(3, pressers.length);
-    if (pressure >= doorResistance(wedged)) {
+    const defense = updated[door.name] ?? { wedged: false, pressureMs: 0 };
+    const pressureMs = defense.pressureMs + elapsed * Math.min(3, pressers.length);
+    if (pressureMs >= doorResistance(defense)) {
       forced.add(door);
       delete updated[door.name];
     } else {
-      updated[door.name] = { pressureMs: pressure, wedged };
+      updated[door.name] = { ...defense, pressureMs };
     }
   }
   return { defenses: updated ?? defenses, closed: forced.size ? closed.filter((door) => !forced.has(door)) : closed, breached: forced };

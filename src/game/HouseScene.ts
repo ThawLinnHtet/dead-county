@@ -49,6 +49,13 @@ function partitionCoversFeet({ x, y, width, height }: WorldRect, feet: WorldPoin
   return feet.y < wallDepth && feet.y > wallDepth - 55;
 }
 
+function recoilDirection(from: WorldPoint, to: WorldPoint): WorldPoint {
+  const x = to.x - from.x;
+  const y = to.y - from.y;
+  const distance = Math.hypot(x, y) || 1;
+  return { x: x / distance, y: y / distance };
+}
+
 export class HouseScene extends Phaser.Scene {
   private readonly coordinator: GameCoordinator;
   private readonly showInteractionPrompt: (prompt: InteractionPromptPosition | null) => void;
@@ -71,6 +78,7 @@ export class HouseScene extends Phaser.Scene {
   private impactArt!: ReturnType<typeof createImpactArt>;
   private soundCue: SoundCue | null = null;
   private doorRattles = new Map<string, number>();
+  private batRecoil = new Map<string, { timeMs: number; direction: WorldPoint }>();
   private pointer: Pick<MouseEvent, 'clientX' | 'clientY'> | null = null;
   private building!: ReturnType<typeof drawHouse>;
   private furnishings!: ReturnType<typeof drawFurniture>;
@@ -411,7 +419,7 @@ export class HouseScene extends Phaser.Scene {
     const art = this.survivorEffects.clear().setDepth(y + .03);
     if (!fallen && attack?.kind === 'shove') drawShove(art, feet, attack);
     else if (!fallen && !sleep && survivor.equippedWeaponId) {
-      drawBat(art, feet, survivor.facingLeft, attack, lean, height, ready ? survivor.facing : undefined, female);
+      drawBat(art, feet, survivor.facingLeft, attack, lean, height, ready ? survivor.facing : undefined, female, this.reduceMotion);
     }
     if (hurt) drawDamageCue(art, feet, biteAge, true, fallen);
   }
@@ -445,8 +453,9 @@ export class HouseScene extends Phaser.Scene {
         ? Infinity : activeTimeMs - zombie.lastBatHitAtMs;
       const hurt = hitAge < damageCueMs;
       const side = zombie.facingLeft ? -1 : 1;
-      const walking = zombie.moving && !attack && !dead;
-      const idle = !walking && !attack && !dead && !this.reduceMotion;
+      const reacting = hurt && !dead && !this.reduceMotion && hitAge < 176;
+      const walking = zombie.moving && !attack && !dead && !reacting;
+      const idle = !walking && !attack && !dead && !reacting && !this.reduceMotion;
       const idleTime = activeTimeMs + art.idleOffset;
       const sway = idle ? Math.sin(idleTime / 560) + .4 * Math.sin(idleTime / 242) : 0;
       const height = idle ? 1 + .022 * Math.sin(idleTime / 390) : 1;
@@ -456,23 +465,29 @@ export class HouseScene extends Phaser.Scene {
       else if (attack?.phase === 'windup') lean = -side * (9 + 9 * (1 - attack.remainingMs / zombieConfig.bite.windupMs));
       else if (attack?.phase === 'contact') lean = 23 * side;
       else if (attack?.phase === 'recovery') lean = 23 * side * attack.remainingMs / zombieConfig.bite.recoveryMs;
-      if (hurt && !dead && !this.reduceMotion) {
-        const recoil = Math.sign(x - project(survivor.position).x) || -side;
-        lean += recoil * 25 * (1 - hitAge / damageCueMs) ** 2;
+      const recoil = reacting ? (1 - hitAge / 176) ** 1.45 : 0;
+      let posedFeet = feet;
+      if (reacting) {
+        const captured = this.batRecoil.get(zombie.id);
+        const direction = captured && captured.timeMs === zombie.lastBatHitAtMs
+          ? captured.direction : recoilDirection(project(survivor.position), feet);
+        lean += direction.x * 37 * recoil;
+        posedFeet = { x: x + direction.x * 5 * recoil, y: y + direction.y * 3 * recoil };
       }
       const look = zombieLooks[zombie.appearanceId];
       const texture = walking ? zombieWalkKey : look.texture;
       const frame = walking ? zombieWalkFrame(zombie.appearanceId, zombie.walkDistance) : look.frame;
       if (art.sprite.texture.key !== texture) art.sprite.setTexture(texture, frame);
       else art.sprite.setFrame(frame);
-      art.sprite.setPosition(x, y).setDepth(y).setFlipX(zombie.facingLeft).setAngle(lean).setScale(1, height);
-      if (hurt && hitAge < 85) art.sprite.setTint(0xd69b82);
+      art.sprite.setPosition(posedFeet.x, posedFeet.y).setDepth(y).setFlipX(zombie.facingLeft).setAngle(lean)
+        .setScale(1 + .06 * recoil, height * (1 - .13 * recoil));
+      if (hurt && hitAge < 100) art.sprite.setTint(0xe3aa88);
       else if (dead) art.sprite.setTint(0x9d8174);
       else art.sprite.clearTint();
       art.shadow.setPosition(x, y - 1).setDepth(y - .1);
       art.effects.clear().setDepth(y + .03);
-      if (attack && attack.kind !== 'stagger') drawBiteArms(art.effects, feet, attack, lean);
-      if (hurt) drawDamageCue(art.effects, feet, hitAge, false, dead);
+      if (attack && attack.kind !== 'stagger') drawBiteArms(art.effects, posedFeet, attack, lean);
+      if (hurt) drawDamageCue(art.effects, posedFeet, hitAge, false, dead);
       else if (attack?.kind === 'stagger' && attack.remainingMs > shoveConfig.staggerMs - 130) {
         drawDamageCue(art.effects, feet, (shoveConfig.staggerMs - attack.remainingMs) * 1.6, false, false);
       }
@@ -526,8 +541,14 @@ export class HouseScene extends Phaser.Scene {
     for (const [index, zombie] of next.zombies.entries()) {
       const actorBefore = previous.zombies[index]!;
       if (zombie.lastBatHitAtMs !== null && zombie.lastBatHitAtMs !== actorBefore.lastBatHitAtMs) {
-        this.impactArt.hit(zombie.position, survivor.position, zombie.lastBatHitAtMs, 'bat', clear);
-        this.audio.impact(panAt(zombie.position));
+        const contact = this.coordinator.getLastBatContact();
+        if (contact?.zombieId === zombie.id && contact.timeMs === zombie.lastBatHitAtMs) {
+          this.batRecoil.set(zombie.id, {
+            timeMs: contact.timeMs, direction: recoilDirection(project(contact.origin), project(contact.position)),
+          });
+          this.impactArt.hit(contact.position, contact.origin, contact.timeMs, 'bat', clear);
+          this.audio.impact(panAt(contact.position));
+        }
       }
       if (zombie.health === 0) continue;
       const sound = this.coordinator.listenAt(zombie.position, 8);
@@ -588,13 +609,15 @@ export class HouseScene extends Phaser.Scene {
       }
       this.displayedOpenings = state.closedOpeningIds;
     }
-    for (const { id, panel, damage } of this.building.openingArt) {
+    for (const { id, panel, damage, barricade } of this.building.openingArt) {
       if (!damage) continue;
-      const strain = doorStrain(state.doorDefenses[id]);
+      const defense = state.doorDefenses[id];
+      const strain = doorStrain(defense);
       const age = state.activeTimeMs - (this.doorRattles.get(id) ?? -Infinity);
       const rattle = !this.reduceMotion && age < doorRattleMs
         ? Math.sin(age / 17) * (strain === 'failing' ? 3.8 : 2.3) * (1 - age / doorRattleMs) : 0;
       panel.setX(rattle);
+      barricade?.setX(rattle).setVisible(defense?.barricaded === true);
       damage.scuffs.setX(rattle).setVisible(strain !== 'intact');
       damage.cracks.setX(rattle).setVisible(strain === 'failing');
     }

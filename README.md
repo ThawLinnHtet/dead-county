@@ -35,6 +35,8 @@ Watch for a short arc beside your survivor when a hidden zombie makes a nearby s
 
 Equip the Canvas Backpack to use its six storage slots. Drag items between the backpack, your main inventory, and an open cupboard. When the starter cabinet is empty, approach it and use **E Store** to stash supplies for later.
 
+The Corner Store stocks a Hammer, and Alder House has a Board and a side window. With the Hammer carried, close Alder House's front door, stand on the inside, and choose **Use** on the Board in Inventory. The noise can draw zombies, and the board buys time if they force the door. Press **E** from inside to remove it, or use the side window to leave it in place. Continue restores the barricade and its remaining resistance.
+
 Fatigue builds while you are awake. Close the entrance to your chosen shelter, take care of Hunger and Thirst, and use **E Sleep** beside a bed. Sleep runs the neighborhood clock and zombie activity faster. You can wake with **E**, and danger or critical needs can wake you early. Stashed supplies, fatigue, and remaining sleep carry over through Continue.
 
 ## Controls

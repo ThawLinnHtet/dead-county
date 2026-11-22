@@ -53,53 +53,58 @@ function screenAngle(direction: WorldPoint) {
 
 export function drawBat(
   art: Graphics, feet: WorldPoint, facingLeft: boolean, attack: AttackState | null, lean: number, height: number,
-  readyAim: WorldPoint | undefined, female: boolean,
+  readyAim: WorldPoint | undefined, female: boolean, reducedMotion: boolean,
 ) {
   const side = facingLeft ? -1 : 1;
   const { x, y } = feet;
   let gripX = x + side * 8;
   let gripY = y - 25 * height;
-  let angle = -1.05;
+  const idleAngle = Math.atan2(Math.sin(-1.05), Math.cos(-1.05) * side);
+  let angle = idleAngle;
   if (readyAim && !attack) {
     const aim = screenAngle(readyAim);
     gripX = x + Math.cos(aim) * 10;
     gripY = y - 32 * height + Math.sin(aim) * 5;
-    angle = Math.atan2(Math.sin(aim - .75), Math.cos(aim - .75) * side);
+    angle = aim - .75 * side;
   }
   if (attack) {
     const aim = screenAngle(attack.direction);
+    const blendAngle = (from: number, to: number, progress: number) =>
+      from + Math.atan2(Math.sin(to - from), Math.cos(to - from)) * progress;
     switch (attack.phase) {
       case 'windup': {
         const progress = 1 - attack.remainingMs / batConfig.windupMs;
-        gripX = x + side * (6 - 10 * progress);
-        gripY = y - 26 - 15 * progress;
-        angle = -1.05 - progress * 1.12;
+        const loaded = aim - 1.5 * side;
+        const release = Math.max(0, (progress - .72) / .28) ** 1.7;
+        const gather = Math.min(1, progress / .62);
+        angle = blendAngle(idleAngle, loaded, gather);
+        angle = blendAngle(angle, aim, release);
+        gripX = x + side * (8 - 11 * gather) * (1 - release) + Math.cos(aim) * 13 * release;
+        gripY = y + (-25 - 12 * gather) * (1 - release) + (-31 + Math.sin(aim) * 11) * release;
         break;
       }
       case 'contact': {
         const progress = 1 - attack.remainingMs / batConfig.contactMs;
         gripX = x + Math.cos(aim) * 13;
         gripY = y - 31 + Math.sin(aim) * 11;
-        angle = aim + (-.48 + progress * .93) * side;
-        const trail = art.lineStyle(2, 0xe2be8a, .6 * (1 - progress)).beginPath();
-        trail.arc(x, y - 31, 42, angle - .47, angle + .12);
-        trail.strokePath();
+        angle = aim + .88 * (1 - (1 - progress) ** 2) * side;
+        if (!reducedMotion) {
+          const trail = art.lineStyle(2, 0xe2be8a, .43 * (1 - progress)).beginPath();
+          trail.arc(gripX, gripY, 27, angle - .42 * side, angle, side < 0);
+          trail.strokePath();
+        }
         break;
       }
       case 'recovery': {
         const remaining = attack.remainingMs / batConfig.recoveryMs;
-        gripX = x + side * (8 + 5 * remaining);
-        gripY = y - 25 + 6 * remaining;
-        const followThrough = Math.atan2(Math.sin(aim + .45 * side), Math.cos(aim + .45 * side) * side);
-        angle = -1.05 + (followThrough + 1.05) * remaining;
+        gripX = x + side * 8 * (1 - remaining) + Math.cos(aim) * 13 * remaining;
+        gripY = y - 25 * (1 - remaining) + (-31 + Math.sin(aim) * 11) * remaining;
+        angle = blendAngle(idleAngle, aim + .88 * side, remaining);
         break;
       }
     }
   }
-  if (attack?.phase !== 'contact') {
-    angle = Math.atan2(Math.sin(angle), Math.cos(angle) * side);
-    gripX += Math.sin(lean * Math.PI / 180) * 24;
-  }
+  if (!attack) gripX += Math.sin(lean * Math.PI / 180) * 24;
   const tipX = gripX + Math.cos(angle) * 28;
   const tipY = gripY + Math.sin(angle) * 28;
   if (readyAim || attack) {

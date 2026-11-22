@@ -234,12 +234,13 @@ export function InventoryPanel({ coordinator, audio, initialItemId }: {
   function useSelectedItem() {
     if (selection?.source !== 'inventory') return;
     const result = coordinator.useItem(slot, selection.id);
-    if (result.status === 'used' || result.status === 'wedged') {
-      audio.confirm('use');
+    if (result.status === 'used' || result.status === 'wedged' || result.status === 'barricaded') {
+      audio.confirm(result.status === 'barricaded' ? 'barricade' : 'use');
       setSelection(null);
       setMoveSource(null);
       setFeedback({
-        text: result.status === 'wedged' ? 'Door wedged.' : `${survivalStatNames[result.stat]} ${roundSurvivalStat(result.value)} / 100`,
+        text: result.status === 'used' ? `${survivalStatNames[result.stat]} ${roundSurvivalStat(result.value)} / 100`
+          : result.status === 'barricaded' ? 'Door barricaded.' : 'Door wedged.',
       });
       close.current?.focus();
     } else {

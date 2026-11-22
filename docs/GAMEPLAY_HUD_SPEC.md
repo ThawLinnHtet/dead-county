@@ -103,6 +103,7 @@ The player must be **in interaction range** of the specific container and have a
 
 - Exterior doors start closed on a fresh run. Press **E** at **Open door** and walk across the threshold with WASD. Cedar Workshop shows **Locked door**, **Unlock door** with the key, or **Unlatch door** from inside. Continue restores each opening's saved state.
 - Show the wedged state in the door prompt. The player applies a wedge through Inventory from inside beside the closed door.
+- At Alder House, show the board separately on the door. Display **Remove barricade** from inside and **Barricaded door** from outside. Keep strain in the existing warning line. Board details explain where to stand and whether a Hammer is required.
 - Entering makes that house's roof hide/fade automatically (with wall occlusion handled by the approved interior system).
 - When an indoor cabinet, drawer or supply box wins selection, anchor `E Search` at that container.
 - Zombies use the same doorway and world navigation; search prompts do not alter collision/pathfinding.

@@ -11,6 +11,14 @@ export const workshopLock = {
   keyKind: 'workshop_key',
 } as const;
 
+export const alderShelter = {
+  houseId: 'lot_1_2',
+  doorId: 'lot_1_2_door',
+  windowId: 'lot_1_2_window',
+  hammerCabinetId: 'lot_1_1_cabinet',
+  boardCabinetId: 'lot_1_2_cabinet',
+} as const;
+
 const blocks = [
   { x: 54, y: 2, name: 'Alder', landmark: 'Corner Store', supplies: ['canned_food', 'canned_food', 'water_bottle'] },
   { x: 78, y: 3, name: 'Birch', landmark: 'Birch Clinic', supplies: ['bandage', 'bandage', 'water_bottle'] },
@@ -37,7 +45,9 @@ export const districtBuildings = blocks.flatMap((block, blockIndex) => [
   const windowY = y + 1.6;
   const expanded = [...stock] as ItemKind[];
   if (featured) expanded.push(blockIndex % 2 === 0 ? 'door_wedge' : 'trail_mix');
-  if (lot === 1 && blockIndex === 0) expanded.push('backpack');
+  if (id === alderShelter.houseId) expanded.push('backpack');
+  if (id + '_cabinet' === alderShelter.hammerCabinetId) expanded.push('hammer');
+  if (id + '_cabinet' === alderShelter.boardCabinetId) expanded.push('board');
   if (`${id}_cabinet` === workshopLock.keyCabinetId) expanded.push(workshopLock.keyKind);
   return {
     id, name, featured, unexpandedStock: stock as readonly ItemKind[],

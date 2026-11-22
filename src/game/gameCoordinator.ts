@@ -1,6 +1,6 @@
 import { advanceAttack, aimFrom, batConfig, beginAttack, selectMeleeTarget, shoveConfig } from './combat.ts';
 import type { AttackState } from './combat.ts';
-import { workshopLock } from './district.ts';
+import { alderShelter, workshopLock } from './district.ts';
 import { actorRadius, contains, createTraversal, hasLineOfSight, houses, initiallyClosed, openings, overlapsOpening, survivorSpawn, unproject } from './world.ts';
 import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
@@ -12,7 +12,7 @@ import type { ConsumableStat, ContainerContents, ContainerStock, DroppedItem, It
 import { createZombies, restoreZombies, zombieConfig } from './zombie.ts';
 import type { WorldSound, ZombieSpawn, ZombieState } from './zombie.ts';
 import { fatiguePerMs, getNeedWarning, getSurvivalStep, neighborhoodDarkness, plannedSleepMs, sleepRecoveryPerMs, sleepSpeed } from './survival.ts';
-import { advanceDoorPressure, doorStrain, findClosedDoorApproach, openingCenter } from './shelter.ts';
+import { advanceDoorPressure, doorResistance, doorStrain, findClosedDoorApproach, openingCenter } from './shelter.ts';
 import type { DoorDefenses, DoorStrain } from './shelter.ts';
 
 export type SurvivorId = 'survivor_male' | 'survivor_female';
@@ -85,6 +85,7 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   listenAt(position: WorldPoint, reach: number): { volume: number; muffled: boolean } | null;
   aimAt(target: WorldPoint | null): void;
   getBatAimPreview(): BatAimPreview | null;
+  getLastBatContact(): BatContact | null;
   step(deltaMs: number): GameState;
   startBatSwing(target: WorldPoint): boolean;
   startShove(): boolean;
@@ -108,6 +109,13 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   dropItem(slot: number, itemId: string): DropResult;
 }
 
+interface BatContact {
+  readonly zombieId: string;
+  readonly timeMs: number;
+  readonly position: WorldPoint;
+  readonly origin: WorldPoint;
+}
+
 export interface BatAimPreview {
   readonly origin: WorldPoint;
   readonly arc: readonly (WorldPoint | null)[];
@@ -120,20 +128,20 @@ export type InteractionTarget =
   | { kind: 'container'; id: string; position: WorldPoint; object: MapObject; empty: boolean }
   | { kind: 'bed'; id: string; position: WorldPoint; object: MapObject; sleeping: boolean }
   | { kind: 'opening'; id: string; position: WorldPoint; object: MapObject; closed: boolean; wedged: boolean; strain: DoorStrain;
-      lock: 'locked' | 'key' | 'inside' | null }
+      barricade: 'inside' | 'outside' | null; lock: 'locked' | 'key' | 'inside' | null }
   | { kind: 'drop'; id: string; position: WorldPoint; item: ItemInstance };
 
 type InteractionResult =
   | { status: 'searched' | 'sleep_changed' }
   | { status: 'picked_up'; slot: number }
-  | { status: 'opening_changed' | 'opening_blocked' | 'opening_locked' | 'inventory_full' | 'too_heavy' | 'unavailable' }
+  | { status: 'opening_changed' | 'opening_blocked' | 'opening_locked' | 'barricade_removed' | 'barricade_blocked' | 'inventory_full' | 'too_heavy' | 'unavailable' }
   | { status: 'sleep_blocked'; reason: string };
 
 const interactionPriority = { drop: 0, container: 1, opening: 2, bed: 3 };
 
 type UseRejection = { status: 'no_benefit'; reason: string } | { status: 'unavailable' };
-type ItemUse = { status: 'eligible'; stat: ConsumableStat; value: number } | { status: 'eligible'; door: MapObject } | UseRejection;
-type UseResult = { status: 'used'; stat: ConsumableStat; value: number } | { status: 'wedged' } | UseRejection;
+type ItemUse = { status: 'eligible'; stat: ConsumableStat; value: number } | { status: 'eligible'; door: MapObject; reinforcement: 'wedged' | 'barricaded' } | UseRejection;
+type UseResult = { status: 'used'; stat: ConsumableStat; value: number } | { status: 'wedged' | 'barricaded' } | UseRejection;
 
 type DropResult = { status: 'dropped' | 'cannot_drop' | 'swing_in_progress' | 'too_heavy' | 'pack_too_heavy' | 'unavailable' };
 
@@ -262,6 +270,7 @@ function makeGameCoordinator({
   let ready = false;
   let sprintRequested = false;
   let pointerTarget: WorldPoint | null = null;
+  let lastBatContact: BatContact | null = null;
   let openContainer: MapObject | null = null;
   let wasPaused = false;
   const listeners = new Set<() => void>();
@@ -376,12 +385,16 @@ function makeGameCoordinator({
       || getNeedWarning('thirst', state.survivor.thirst) === 'critical';
   }
 
+  function carries(kind: ItemInstance['kind']) {
+    const { inventory, equippedPackId } = state.survivor;
+    return inventory.some((item) => item?.kind === kind)
+      || (equippedPackId !== null && !!state.packs[equippedPackId]?.some((item) => item.kind === kind));
+  }
+
   function getDoorLock(id: string): Extract<InteractionTarget, { kind: 'opening' }>['lock'] {
     if (id !== workshopLock.doorId || !state.lockedDoorIds.includes(id)) return null;
     if (state.occupiedHouseId === workshopLock.houseId) return 'inside';
-    const { inventory, equippedPackId } = state.survivor;
-    const matchesKey = (item: ItemInstance | null) => item?.kind === workshopLock.keyKind;
-    if (inventory.some(matchesKey) || (equippedPackId && state.packs[equippedPackId]?.some(matchesKey))) return 'key';
+    if (carries(workshopLock.keyKind)) return 'key';
     return 'locked';
   }
 
@@ -417,6 +430,7 @@ function makeGameCoordinator({
         const target = {
           kind: 'opening' as const, id: object.name, position: point, object,
           closed: closed.includes(object), wedged: defense?.wedged ?? false, strain: doorStrain(defense),
+          barricade: defense?.barricaded ? (state.occupiedHouseId === alderShelter.houseId ? 'inside' as const : 'outside' as const) : null,
           lock: getDoorLock(object.name),
         };
         return [{ target, distance }];
@@ -470,7 +484,18 @@ function makeGameCoordinator({
       return { status: 'searched' };
     }
     if (target.kind === 'opening') {
-      if (displayed.kind !== 'opening' || displayed.closed !== target.closed) return { status: 'unavailable' };
+      if (displayed.kind !== 'opening' || displayed.closed !== target.closed || displayed.barricade !== target.barricade) {
+        return { status: 'unavailable' };
+      }
+      if (target.barricade === 'outside') return { status: 'barricade_blocked' };
+      if (target.barricade === 'inside') {
+        const { [target.id]: defense, ...doorDefenses } = state.doorDefenses;
+        const pressureMs = Math.min(defense!.pressureMs, doorResistance() - 1);
+        state = { ...state, doorDefenses: pressureMs > 0
+          ? { ...doorDefenses, [target.id]: { pressureMs, wedged: false } } : doorDefenses };
+        notify();
+        return { status: 'barricade_removed' };
+      }
       if (target.lock === 'locked') return { status: 'opening_locked' };
       if (!target.closed && (overlapsOpening(state.survivor.position, target.object)
           || state.zombies.some((actor) => actor.health > 0 && overlapsOpening(actor.position, target.object))
@@ -577,8 +602,21 @@ function makeGameCoordinator({
         .map((object) => ({ object, distance: openingDistance(object, survivor.position) }))
         .filter(({ distance }) => Number.isFinite(distance)).sort((a, b) => a.distance - b.distance)[0]?.object;
       if (!door) return { status: 'no_benefit', reason: 'Stand inside beside a closed door.' };
-      if (state.doorDefenses[door.name]?.wedged) return { status: 'no_benefit', reason: 'This door is already wedged.' };
-      return { status: 'eligible', door };
+      const defense = state.doorDefenses[door.name];
+      if (defense?.wedged) return { status: 'no_benefit', reason: 'This door is already wedged.' };
+      if (defense?.barricaded) return { status: 'no_benefit', reason: 'This door is already barricaded.' };
+      return { status: 'eligible', door, reinforcement: 'wedged' };
+    }
+    if (item.kind === 'board') {
+      const door = closed.find(({ name }) => name === alderShelter.doorId);
+      if (!door || state.occupiedHouseId !== alderShelter.houseId
+        || !Number.isFinite(openingDistance(door, survivor.position))) {
+        return { status: 'no_benefit', reason: 'Stand inside beside the closed front door of Alder House.' };
+      }
+      const defense = state.doorDefenses[door.name];
+      if (defense?.barricaded || defense?.wedged) return { status: 'no_benefit', reason: 'This door is already reinforced.' };
+      if (!carries('hammer')) return { status: 'no_benefit', reason: 'Carry a Hammer to use this Board.' };
+      return { status: 'eligible', door, reinforcement: 'barricaded' };
     }
     const definition = itemDefinitions[item.kind];
     if (!('use' in definition)) return { status: 'unavailable' };
@@ -638,7 +676,10 @@ function makeGameCoordinator({
       if (target) {
         const zombie = zombies.find((zombie) => zombie.getState() === target)!;
         if (attack.kind === 'shove') zombie.receiveShove(nextPosition);
-        else zombie.receiveBatHit(nextPosition, activeTimeMs);
+        else {
+          lastBatContact = { zombieId: target.id, timeMs: activeTimeMs, position: target.position, origin: nextPosition };
+          zombie.receiveBatHit(nextPosition, activeTimeMs);
+        }
         attack = { ...attack, damageApplied: true };
       }
     }
@@ -762,6 +803,7 @@ function makeGameCoordinator({
     isSneaking: () => sneakHeld,
     canSee,
     getBatAimPreview,
+    getLastBatContact: () => lastBatContact,
     listenAt,
     aimAt(target) {
       if (pause.getPauseState().isPaused || state.gameOver || state.sleep || state.survivor.attack) return;
@@ -877,12 +919,19 @@ function makeGameCoordinator({
       inventory[slot] = null;
       if ('door' in action) {
         const id = action.door.name;
-        const doorDefenses = { ...state.doorDefenses, [id]: {
-          pressureMs: state.doorDefenses[id]?.pressureMs ?? 0, wedged: true,
+        const barricaded = action.reinforcement === 'barricaded';
+        const doorDefenses: DoorDefenses = { ...state.doorDefenses, [id]: {
+          pressureMs: state.doorDefenses[id]?.pressureMs ?? 0,
+          wedged: !barricaded,
+          ...(barricaded ? { barricaded: true } : {}),
         } };
-        state = { ...state, doorDefenses, survivor: { ...state.survivor, inventory } };
+        if (barricaded) emitSound({ position: state.survivor.position, reach: 9 });
+        state = {
+          ...state, doorDefenses, survivor: { ...state.survivor, inventory },
+          zombies: barricaded ? zombies.map((actor) => actor.getState()) : state.zombies,
+        };
         notify();
-        return { status: 'wedged' };
+        return { status: action.reinforcement };
       }
       const { stat, value } = action;
       state = { ...state, survivor: {
