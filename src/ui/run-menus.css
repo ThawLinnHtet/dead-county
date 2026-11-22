@@ -170,7 +170,11 @@
   margin: .3rem 0 0 .65rem;
 }
 
-.menu-version {
+.menu-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
   margin-top: auto;
   padding-top: 1.5rem;
 }
