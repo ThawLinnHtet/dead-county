@@ -37,6 +37,14 @@ export const itemDefinitions = {
   door_wedge: {
     name: 'Door Wedge', category: 'Shelter', description: 'Use beside a closed door from inside to resist forced entry.', weight: .25,
   },
+  board: {
+    name: 'Board', category: 'Shelter', weight: .65,
+    description: 'Use with a Hammer from inside beside the closed front door of Alder House.',
+  },
+  hammer: {
+    name: 'Hammer', category: 'Tool', weight: .45,
+    description: 'Carry it in a pocket or your worn backpack to install a Board at Alder House.',
+  },
   workshop_key: {
     name: 'Workshop Key', category: 'Key', description: 'Carry it in your inventory or worn backpack to unlock Cedar Workshop.', weight: .05,
   },

@@ -71,11 +71,19 @@ test('the bat commits world aim and damages only the ordinal winner among equal 
     assert.equal(game.startBatSwing({ x: 11, y: 9.15 }), false);
     game.step(100);
     assert.ok(game.getState().zombies.every(({ health }) => health === initial));
+    assert.equal(game.getLastBatContact(), null);
     game.step(250);
     const damage = game.getState().zombies.filter(({ health }) => health < initial);
     assert.deepEqual(damage.map(({ id }) => id), ['Z-zombie']);
+    const contact = game.getLastBatContact();
+    assert.ok(contact);
+    assert.equal(contact.zombieId, damage[0]!.id);
+    assert.equal(contact.timeMs, damage[0]!.lastBatHitAtMs);
+    assert.deepEqual(contact.origin, survivorPosition);
+    assert.ok(contact.position.x < damage[0]!.position.x);
     game.step(250);
     assert.equal(game.getState().zombies.find(({ id }) => id === 'Z-zombie')?.health, damage[0]!.health);
+    assert.strictEqual(game.getLastBatContact(), contact);
   }
 });
 
@@ -186,6 +194,7 @@ test('the locked arc favors centerline then distance, while a wall blocks an oth
   assert.equal(blocked.startBatSwing({ x: 14.30, y: 9.6 }), true);
   assert.equal(blocked.step(250).survivor.attack?.damageApplied, false);
   assert.equal(blocked.getState().zombies[0]!.lastBatHitAtMs, null);
+  assert.equal(blocked.getLastBatContact(), null);
 });
 
 test('strike knockback leaves a living zombie committed, and bite contact rechecks its new reach', () => {

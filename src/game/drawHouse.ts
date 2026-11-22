@@ -1,5 +1,5 @@
 import { artBounds, at, box, floor, inset, nearDepth, noise, shape, stroke } from './isometricDrawing';
-import { districtBuildings } from './district';
+import { alderShelter, districtBuildings } from './district';
 import { details, houses, openings, project, roofs, walls } from './world';
 import type { MapObject, WorldRect } from './world';
 
@@ -142,7 +142,7 @@ export function drawHouse(scene: Phaser.Scene) {
     const a = at(opening.x + opening.width, opening.y + opening.height, 23);
     const b = at(vertical ? opening.x + opening.width : opening.x, vertical ? opening.y : opening.y + opening.height, 23);
     stroke(panel, 0xc8b295, [a, b], 2.5);
-    return { id: opening.name, panel, openLeaf: null, damage: null };
+    return { id: opening.name, panel, openLeaf: null, damage: null, barricade: null };
   });
   return { nearWalls, fixedWalls, roofArt, openingArt, signs };
 }
@@ -206,9 +206,20 @@ function drawDoor(scene: Phaser.Scene, opening: MapObject) {
   const open = alongY
     ? { x: x + width, y: leaf.y - leaf.height, width: .07, height: leaf.height }
     : { x: leaf.x - leaf.width, y: y + height, width: leaf.width, height: .07 };
+  const barricade = opening.name === alderShelter.doorId
+    ? scene.add.graphics().setDepth(depth - .016).setVisible(false) : null;
+  if (barricade) {
+    const board = [face(-.07, 19), face(.99, 31), face(.99, 42), face(-.07, 30)];
+    shape(barricade, 0x402a20, board);
+    shape(barricade, 0xa67c52, [face(-.035, 21), face(.965, 32), face(.965, 40), face(-.035, 29)]);
+    stroke(barricade, 0xc69b6c, [face(-.035, 29), face(.965, 40)], 1.8);
+    stroke(barricade, 0x78543a, [face(.21, 25), face(.52, 28), face(.72, 32), face(.87, 33)], 1.4);
+    stroke(barricade, 0x3d3329, [face(.09, 26), face(.09, 27)], 2.4);
+    stroke(barricade, 0x3d3329, [face(.84, 35), face(.84, 36)], 2.4);
+  }
   const openLeaf = scene.add.graphics().setDepth(nearDepth(open) + .025);
   paintDoorLeaf(openLeaf, open, alongY, true);
-  return { id: opening.name, panel, openLeaf, damage: { scuffs, cracks } };
+  return { id: opening.name, panel, openLeaf, damage: { scuffs, cracks }, barricade };
 }
 
 function doorFace(leaf: WorldRect, alongY: boolean, fraction: number, z: number) {

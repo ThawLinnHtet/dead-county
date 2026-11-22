@@ -42,7 +42,8 @@ export function GameViewport({ coordinator, audio, onDeathAnimationEnd }: {
       const target = placement?.target ?? null;
       const changed = target?.id !== displayed?.id || target?.kind !== displayed?.kind
         || (target?.kind === 'opening' && displayed?.kind === 'opening'
-          && (target.closed !== displayed.closed || target.wedged !== displayed.wedged || target.lock !== displayed.lock))
+          && (target.closed !== displayed.closed || target.wedged !== displayed.wedged
+            || target.barricade !== displayed.barricade || target.lock !== displayed.lock))
         || (target?.kind === 'container' && displayed?.kind === 'container' && target.empty !== displayed.empty)
         || (target?.kind === 'bed' && displayed?.kind === 'bed' && target.sleeping !== displayed.sleeping);
       const strain = target?.kind === 'opening' ? target.strain : 'intact';
@@ -54,7 +55,9 @@ export function GameViewport({ coordinator, audio, onDeathAnimationEnd }: {
       if (changed || strain !== previousStrain) {
         label.textContent = target.kind === 'container' ? (target.empty ? 'Store' : 'Search')
           : target.kind === 'bed' ? (target.sleeping ? 'Wake up' : 'Sleep') : target.kind === 'opening'
-          ? target.lock === 'locked' ? 'Locked door'
+          ? target.barricade === 'inside' ? 'Remove barricade'
+            : target.barricade === 'outside' ? 'Barricaded door'
+            : target.lock === 'locked' ? 'Locked door'
             : target.lock === 'key' ? 'Unlock door'
             : target.lock === 'inside' ? 'Unlatch door'
             : `${target.closed ? 'Open' : 'Close'} ${target.object.type}${target.wedged ? ' (wedged)' : ''}`
@@ -99,6 +102,8 @@ export function GameViewport({ coordinator, audio, onDeathAnimationEnd }: {
         if (result.status === 'opening_blocked') {
           feedback.textContent = target.kind === 'opening' && target.object.type === 'door'
             ? 'Doorway blocked' : 'Window blocked';
+        } else if (result.status === 'barricade_blocked') {
+          feedback.textContent = 'Barricaded from inside. Try the side window.';
         } else if (result.status === 'opening_locked') {
           feedback.textContent = 'Cedar Workshop is locked. Check Cedar House for the key, or try the side window.';
         } else if (result.status === 'sleep_blocked') {

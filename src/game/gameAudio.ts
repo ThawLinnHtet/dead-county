@@ -110,8 +110,7 @@ export function createGameAudio() {
     return !muted && !hidden && scene === 'world' && context?.state === 'running' ? output : undefined;
   }
 
-  function playNoise(duration: number, frequency: number, volume: number, pan = 0) {
-    const destination = worldOutput();
+  function playNoise(duration: number, frequency: number, volume: number, pan = 0, destination = worldOutput()) {
     if (!context || !noise || !destination || volume <= .001) return;
     const time = context.currentTime;
     const source = context.createBufferSource();
@@ -131,8 +130,7 @@ export function createGameAudio() {
     source.stop(time + duration);
   }
 
-  function thud(frequency: number, duration: number, volume: number, pan: number) {
-    const destination = worldOutput();
+  function thud(frequency: number, duration: number, volume: number, pan: number, destination = worldOutput()) {
     if (!context || !destination || volume <= .001) return;
     const time = context.currentTime;
     const oscillator = context.createOscillator();
@@ -171,8 +169,8 @@ export function createGameAudio() {
       mixAmbience();
     },
     swing() {
-      playNoise(.17, 2100, .26);
-      playNoise(.095, 640, .12);
+      playNoise(.122, 1850, .20);
+      playNoise(.082, 640, .09);
     },
     footsteps(pan: number, volume: number, heavy: boolean, surface: FootSurface, muffled = false) {
       const tone = footstepTone[surface] * (muffled ? .52 : 1);
@@ -223,9 +221,9 @@ export function createGameAudio() {
       playNoise(.11, 390, volume, pan);
     },
     impact(pan: number) {
-      playNoise(.049, 2330, .43, pan);
-      playNoise(.13, 545, .36, pan);
-      thud(126, .143, .36, pan);
+      playNoise(.034, 2550, .46, pan);
+      playNoise(.118, 690, .38, pan);
+      thud(109, .155, .40, pan);
     },
     bite(pan: number) {
       playNoise(.16, 960, .34, pan);
@@ -242,9 +240,15 @@ export function createGameAudio() {
         thud(closed ? 121 : 179, .09, closed ? .18 : .095, 0);
       }
     },
-    confirm(action: 'item' | 'equip' | 'use') {
+    confirm(action: 'item' | 'equip' | 'use' | 'barricade') {
       if (muted || hidden || !context || context.state !== 'running' || !interfaceOutput
         || (scene !== 'world' && scene !== 'paused')) return;
+      if (action === 'barricade') {
+        playNoise(.039, 2480, .24, 0, interfaceOutput);
+        playNoise(.11, 960, .25, 0, interfaceOutput);
+        thud(169, .105, .19, 0, interfaceOutput);
+        return;
+      }
       const time = context.currentTime;
       const pitches = action === 'equip' ? [175, 260] : action === 'use' ? [308, 411] : [245, 328];
       for (const [index, pitch] of pitches.entries()) {

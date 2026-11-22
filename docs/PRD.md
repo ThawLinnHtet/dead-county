@@ -46,6 +46,14 @@
 | **v2.29** | **2026-11-21** | Added confirmed-hit blood and audio, surface footsteps, ambient sound, and clearer wall and doorway rendering. |
 | **v2.30** | **2026-11-21** | Added a manual bat aim guide with a range arc and a visible target preview. |
 
+### Post-MVP shelter slice
+
+Alder House is the first barricadable shelter. Scavenge the Hammer from the Corner Store and the Board from Alder House. While inside beside the closed front door, use the Board from Inventory with the Hammer in pockets or in the worn Canvas Backpack. Only a valid installation consumes the Board, and the reusable Hammer stays in place. Door Wedges and boards cannot reinforce the same door together. The side window remains operable.
+
+Installation makes one positional sound that ordinary zombies can investigate. Only existing confirmed pursuit applies door pressure. The board extends resistance, shows visible strain, and is lost if zombies force the door. From inside, **E Remove barricade** removes the board without returning it or opening the door. From outside, the closed door stays blocked while boarded. Removing the board preserves existing pressure up to the ordinary door's resistance. A breach during sleep still wakes the survivor.
+
+Save & Exit and Continue preserve the barricade, door pressure and item locations. Older runs begin without barricades and receive the two new items in their designated containers when space permits. Existing items keep their locations and identities.
+
 ### First-night milestone
 
 The survivor can take supplies from one building and stash them in another. Inventory and Loot still pause simulation. The equipped Canvas Backpack has six slots of its own and adds to the carried weight limit. Players can drag items directly between the open cupboard, backpack and pockets or use labeled buttons. An empty cupboard can reopen for storage. Each transfer moves one existing item instance, and the survivor must unequip a worn item before packing or storing it.
