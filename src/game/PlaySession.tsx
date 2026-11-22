@@ -1,9 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { ReactNode } from 'react';
 import { formatSurvivalTime } from '../ui/formatSurvivalTime';
 import { GameOverScreen } from '../ui/GameOverScreen';
 import type { DeathSaveStatus } from '../save/useRunFlow';
 import { houseNames } from './drawNeighborhoodMap';
 import { GameViewport } from './GameViewport';
+import type { GameAudio } from './gameAudio';
 import type { GameCoordinator, GameOverResult } from './gameCoordinator';
 import { InventoryPanel } from './InventoryPanel';
 import { InventoryPreview } from './InventoryPreview';
@@ -20,6 +22,8 @@ function focusGameplay(root: HTMLElement | null) {
 
 export function PlaySession({
   coordinator,
+  audio,
+  soundToggle,
   onNewRun,
   onMainMenu,
   pauseSaveActions,
@@ -27,6 +31,8 @@ export function PlaySession({
   onRecoverDeathSave,
 }: {
   coordinator: GameCoordinator;
+  audio: GameAudio;
+  soundToggle: ReactNode;
   onNewRun: () => void;
   onMainMenu: () => void;
   pauseSaveActions?: PauseSaveActions;
@@ -49,6 +55,11 @@ export function PlaySession({
   const [inventoryItemId, setInventoryItemId] = useState<string>();
   const [controlsOpen, setControlsOpen] = useState(false);
   const clock = neighborhoodTime(survivalSeconds * 1000);
+  const showGameOver = gameOver !== null && revealedResult === gameOver;
+
+  useLayoutEffect(() => {
+    audio.setScene(showGameOver ? 'silent' : pause.isPaused ? 'paused' : 'world');
+  }, [audio, pause.isPaused, showGameOver]);
 
   function openInventory(itemId?: string) {
     setInventoryItemId(itemId);
@@ -91,7 +102,7 @@ export function PlaySession({
     if (!pause.isPaused && !gameOver) focusGameplay(foreground.current);
   }, [pause.isPaused, gameOver]);
 
-  if (gameOver && revealedResult === gameOver) {
+  if (showGameOver) {
     return (
       <GameOverScreen result={gameOver} onNewRun={onNewRun} onMainMenu={onMainMenu}
         saveStatus={deathSaveStatus} onRecoverSave={onRecoverDeathSave} />
@@ -101,7 +112,7 @@ export function PlaySession({
   return (
     <main className="game-screen">
       <div ref={foreground} inert={pause.isPaused || gameOver !== null}>
-        <GameViewport coordinator={coordinator} onDeathAnimationEnd={revealGameOver} />
+        <GameViewport coordinator={coordinator} audio={audio} onDeathAnimationEnd={revealGameOver} />
         <div className="neighborhood-night" style={{ opacity: clock.darkness }} aria-hidden="true" />
         <SurvivalMeters coordinator={coordinator} location={houseNames[occupiedHouseId ?? ''] ?? 'Neighborhood'} />
         <div className="map-hud">
@@ -114,7 +125,7 @@ export function PlaySession({
           </div>
           <Minimap coordinator={coordinator} />
         </div>
-        <InventoryPreview coordinator={coordinator} onOpenInventory={openInventory}
+        <InventoryPreview coordinator={coordinator} audio={audio} onOpenInventory={openInventory}
           onReturnToWorld={() => focusGameplay(foreground.current)} />
         <aside className="movement-hint field-frame" aria-label="Gameplay controls">
           <div className="movement-hint__body" id="game-controls" hidden={!controlsOpen}>
@@ -150,10 +161,10 @@ export function PlaySession({
         <>
           <FullMap coordinator={coordinator} open={pause.foregroundPanel === 'map'} />
           {pause.foregroundPanel === 'pause' && (
-            <PauseMenu pause={pause} onResume={coordinator.resume} saveActions={pauseSaveActions} />
+            <PauseMenu pause={pause} onResume={coordinator.resume} saveActions={pauseSaveActions} soundToggle={soundToggle} />
           )}
           {(pause.foregroundPanel === 'inventory' || (pause.foregroundPanel === 'loot' && coordinator.getOpenContainer())) && (
-            <InventoryPanel coordinator={coordinator}
+            <InventoryPanel coordinator={coordinator} audio={audio}
               initialItemId={pause.foregroundPanel === 'inventory' ? inventoryItemId : undefined} />
           )}
         </>

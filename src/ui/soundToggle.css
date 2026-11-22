@@ -1,0 +1,25 @@
+.sound-toggle {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  gap: .45rem;
+  padding: .35rem .65rem;
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-frame-radius);
+  background: var(--dc-frame);
+  color: var(--dc-text);
+  font: 600 .78rem/1 var(--dc-font-body);
+  cursor: pointer;
+}
+
+.sound-toggle span {
+  margin-inline-start: .2rem;
+  color: var(--dc-warning);
+}
+
+.sound-toggle:hover { border-color: var(--dc-warning); }
+
+.sound-toggle:focus-visible {
+  outline: 2px solid var(--dc-focus);
+  outline-offset: 2px;
+}

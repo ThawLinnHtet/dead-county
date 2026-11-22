@@ -126,3 +126,9 @@
 .pause-menu__recovery .pause-menu__action {
   justify-content: center;
 }
+
+.pause-menu__sound {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: .7rem;
+}

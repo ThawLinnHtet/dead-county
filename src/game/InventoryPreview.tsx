@@ -1,11 +1,13 @@
 import { useSyncExternalStore } from 'react';
+import type { GameAudio } from './gameAudio';
 import type { GameCoordinator } from './gameCoordinator';
 import { ItemIcon } from './ItemIcon';
 import { inventoryQuickSlotCount, itemDefinitions } from './items';
 import './inventoryPreview.css';
 
-export function InventoryPreview({ coordinator, onOpenInventory, onReturnToWorld }: {
+export function InventoryPreview({ coordinator, audio, onOpenInventory, onReturnToWorld }: {
   coordinator: GameCoordinator;
+  audio: GameAudio;
   onOpenInventory: (itemId?: string) => void;
   onReturnToWorld: () => void;
 }) {
@@ -41,6 +43,7 @@ export function InventoryPreview({ coordinator, onOpenInventory, onReturnToWorld
                 title={locked ? 'Finish your swing first.' : label}
                 onClick={(event) => {
                   const action = coordinator.activateQuickSlot(slot, item.id);
+                  if (action === 'equipped' && !equipped) audio.confirm('equip');
                   if (action === 'inspect') onOpenInventory(item.id);
                   else if (event.detail > 0) onReturnToWorld();
                 }}
