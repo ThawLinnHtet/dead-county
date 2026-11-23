@@ -23,6 +23,7 @@ import type { WorldPoint, WorldRect } from './world';
 import { neighborhoodDarkness } from './survival';
 import zombieVariantsUrl from './zombie-variants.png';
 import { zombieConfig } from './zombie';
+import { createZombiePoses, knockdownPose, zombiePoseKey } from './zombiePoses';
 
 const outsideTerrainTiles = 7;
 const groundChunkSize = 8;
@@ -71,6 +72,7 @@ export class HouseScene extends Phaser.Scene {
   private survivor!: Phaser.GameObjects.Sprite;
   private shadow!: Phaser.GameObjects.Ellipse;
   private survivorEffects!: Phaser.GameObjects.Graphics;
+  private survivorLegs!: Phaser.GameObjects.Graphics;
   private survivorPack!: Phaser.GameObjects.Graphics;
   private aimArc!: Phaser.GameObjects.Graphics;
   private aimBracket!: Phaser.GameObjects.Graphics;
@@ -124,6 +126,7 @@ export class HouseScene extends Phaser.Scene {
 
     this.shadow = this.add.ellipse(0, 0, 24, 8, 0x282721, .45);
     this.survivorEffects = this.add.graphics();
+    this.survivorLegs = this.add.graphics();
     this.survivorPack = this.add.graphics();
     this.aimArc = this.add.graphics().setDepth(-4650);
     this.aimBracket = this.add.graphics();
@@ -135,6 +138,7 @@ export class HouseScene extends Phaser.Scene {
     this.survivor = this.add.sprite(0, 0, survivorTexture, 0).setOrigin(.5, actorOrigin);
     createSurvivorDirectionTexture(this.textures);
     createZombieWalkTexture(this.textures);
+    createZombiePoses(this.textures);
     this.zombieArt.clear();
     this.drawZombies(initialState);
     this.drawSurvivor(initialState);
@@ -398,6 +402,23 @@ export class HouseScene extends Phaser.Scene {
     const depth = bed ? project({ x: bed.x + bed.width, y: bed.y + bed.height }).y + .06 : y;
     this.survivor.setPosition(spriteFeet.x, spriteFeet.y - (bed ? 20 : 0)).setDepth(depth)
       .setFlipX(!straight && survivor.facingLeft).setAngle(lean).setScale(bed ? .74 : 1, height);
+    const braced = !!attack && !attack.kind && weapon === 'baseball_bat' && !fallen;
+    const legs = this.survivorLegs.clear().setDepth(y - .02);
+    if (braced) {
+      this.survivor.setCrop(0, 0, actorFrameWidth, 37);
+      const hipX = x + Math.sin(lean * Math.PI / 180) * 19;
+      const hipY = y - height * 20;
+      for (const foot of [-1, 1]) {
+        const bootX = x + foot * 9 * side;
+        const bootY = y + foot * 1.5;
+        const kneeX = hipX + (foot * 5 + 3) * side;
+        for (const [width, color] of [[7, 0x302c26], [4, foot < 0 ? 0x494a40 : 0x626355]] as const) {
+          legs.lineStyle(width, color).lineBetween(hipX + foot * 2, hipY, kneeX, y - 11)
+            .lineBetween(kneeX, y - 11, bootX, bootY - 3);
+        }
+        legs.fillStyle(0x493b30).fillRect(bootX - 4, bootY - 4, 9, 4);
+      }
+    } else if (this.survivor.isCropped) this.survivor.setCrop();
     if (hurt) this.survivor.setTint(0xeaa18a);
     else if (fallen) this.survivor.setTint(0x9d8174);
     else this.survivor.clearTint();
@@ -464,10 +485,8 @@ export class HouseScene extends Phaser.Scene {
       const height = idle ? 1 + .022 * Math.sin(idleTime / 390) : 1;
       let lean = walking ? 1.5 * side : 2 * sway;
       if (dead) lean = -side * Phaser.Math.Linear(25, 85, Math.min(1, hitAge / 210));
-      else if (down) {
-        const fall = Math.min(1, (shoveConfig.knockdownMs - attack.remainingMs) / 155, attack.remainingMs / 230);
-        lean = -side * 83 * (this.reduceMotion ? 1 : fall);
-      } else if (attack?.kind === 'stagger') lean = -side * 29 * attack.remainingMs / shoveConfig.staggerMs;
+      else if (down) lean = 0;
+      else if (attack?.kind === 'stagger') lean = -side * 29 * attack.remainingMs / shoveConfig.staggerMs;
       else if (attack?.phase === 'windup') lean = -side * (9 + 9 * (1 - attack.remainingMs / zombieConfig.bite.windupMs));
       else if (attack?.phase === 'contact') lean = 23 * side;
       else if (attack?.phase === 'recovery') lean = 23 * side * attack.remainingMs / zombieConfig.bite.recoveryMs;
@@ -477,12 +496,15 @@ export class HouseScene extends Phaser.Scene {
         const captured = this.batRecoil.get(zombie.id);
         const direction = captured && captured.timeMs === zombie.lastBatHitAtMs
           ? captured.direction : recoilDirection(project(survivor.position), feet);
-        lean += direction.x * 37 * recoil;
+        lean += direction.x * 9 * recoil;
         posedFeet = { x: x + direction.x * 5 * recoil, y: y + direction.y * 3 * recoil };
       }
       const look = zombieLooks[zombie.appearanceId];
-      const texture = walking ? zombieWalkKey : look.texture;
-      const frame = walking ? zombieWalkFrame(zombie.appearanceId, zombie.walkDistance) : look.frame;
+      const pose = down ? knockdownPose(attack.remainingMs, this.reduceMotion)
+        : !dead && hitAge < 176 ? 'flinch' : undefined;
+      const texture = pose ? zombiePoseKey : walking ? zombieWalkKey : look.texture;
+      const frame = pose ? zombie.appearanceId + '-' + pose
+        : walking ? zombieWalkFrame(zombie.appearanceId, zombie.walkDistance) : look.frame;
       if (art.sprite.texture.key !== texture) art.sprite.setTexture(texture, frame);
       else art.sprite.setFrame(frame);
       art.sprite.setPosition(posedFeet.x, posedFeet.y).setDepth(y).setFlipX(zombie.facingLeft).setAngle(lean)
@@ -493,7 +515,7 @@ export class HouseScene extends Phaser.Scene {
       art.shadow.setPosition(x, y - 1).setDepth(y - .1);
       art.effects.clear().setDepth(y + .03);
       if (attack && !attack.kind) drawBiteArms(art.effects, posedFeet, attack, lean);
-      if (hurt) drawDamageCue(art.effects, posedFeet, hitAge, false, dead);
+      if (hurt) drawDamageCue(art.effects, posedFeet, hitAge, false, dead || down);
       else if (attack?.kind === 'stagger' && attack.remainingMs > shoveConfig.staggerMs - 130) {
         drawDamageCue(art.effects, feet, (shoveConfig.staggerMs - attack.remainingMs) * 1.6, false, false);
       }

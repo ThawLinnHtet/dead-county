@@ -110,6 +110,17 @@ export function drawMeleeWeapon(
   if (!attack) gripX += Math.sin(lean * Math.PI / 180) * 24;
   const tipX = gripX + Math.cos(angle) * length;
   const tipY = gripY + Math.sin(angle) * length;
+  const twoHanded = !knife && !!(readyAim || attack);
+  const supportX = gripX + Math.cos(angle) * 6;
+  const supportY = gripY + Math.sin(angle) * 6;
+  if (twoHanded) {
+    const shoulder = x - 5 * side + Math.sin(lean * Math.PI / 180) * 30;
+    const elbow = shoulder - 4 * side;
+    for (const [width, color] of [[6, 0x302920], [4, female ? 0x694534 : 0x50543e]] as const) {
+      art.lineStyle(width, color).lineBetween(shoulder, y - 33 * height, elbow, y - 23 * height)
+        .lineBetween(elbow, y - 23 * height, supportX, supportY);
+    }
+  }
   if (readyAim || attack) {
     const shoulderX = x + side * 5 + Math.sin(lean * Math.PI / 180) * 30;
     const shoulderY = y - 34 * height;
@@ -124,6 +135,7 @@ export function drawMeleeWeapon(
   art.lineStyle(3, knife ? 0xc2cbd0 : 0xbb8956).lineBetween(gripX, gripY - .5, tipX, tipY - .5);
   art.lineStyle(4, 0x6c4832).lineBetween(gripX, gripY, gripX + Math.cos(angle) * 7, gripY + Math.sin(angle) * 7);
   art.fillStyle(0xb68968).fillCircle(gripX, gripY, 2.2);
+  if (twoHanded) art.fillStyle(0xc09271).fillCircle(supportX, supportY, 2.2);
 }
 
 export function drawShove(art: Graphics, feet: WorldPoint, attack: AttackState) {
@@ -165,8 +177,12 @@ export function drawBiteArms(art: Graphics, feet: WorldPoint, attack: AttackStat
     const handX = shoulderX + dx * reach;
     const handY = shoulderY + dy * reach * .65 - lift;
     art.lineStyle(6, 0x40312b).lineBetween(shoulderX, shoulderY, elbowX, elbowY);
-    art.lineStyle(3, 0x8f6953).lineBetween(elbowX, elbowY, handX, handY);
+    art.lineStyle(4, 0x8f6953).lineBetween(elbowX, elbowY, handX, handY);
     art.fillStyle(0xbc9273).fillCircle(handX, handY, 2);
+    if (attack.phase !== 'recovery') {
+      art.lineStyle(1.6, 0xbc9273).lineBetween(handX, handY - 1, handX + dx * 4, handY + dy * 3 - 2)
+        .lineBetween(handX, handY + 1, handX + dx * 3, handY + dy * 3 + 2);
+    }
   }
 }
 
