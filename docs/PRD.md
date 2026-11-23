@@ -158,7 +158,7 @@ Do not pull post-MVP capabilities into a milestone because an asset or design mo
 | HUD/menus | Main, choose survivor, controls, gameplay HUD, inventory, loot, pause/save, game over, confirmations | Crafting/skills/vehicle dashboards, complicated settings |
 | Navigation UI | Circular **north-up** minimap, full neighborhood map, player arrow | Fog of war, pins, quest routes, regions, enemy/loot reveal |
 | Time/lighting | Day/night cycle, elapsed survival time, reduced nighttime sight range | Dynamic weather |
-| Save | 1 active local IndexedDB save slot; manual save/load; game-over invalidates continuation | Accounts, multiple cloud slots, sync and conflict resolution |
+| Save | 1 active local IndexedDB save slot; manual saves and autosave checkpoints; game-over invalidates continuation | Accounts, multiple cloud slots, sync and conflict resolution |
 | Infrastructure | Static Vite deployment to Vercel, no dedicated backend | Supabase Auth + PostgreSQL JSONB, server-based multiplayer |
 | AI | Rule-based finite-state machines and pathfinding; no external AI service | Behavior trees/utility AI and optional NPC-dialogue LLM |
 | Audio and effects | Stereo footsteps, groans and door impacts, bat swing and contact cues, inventory feedback | Full soundtrack and cinematic effects |
@@ -539,7 +539,7 @@ The UI must suppress world input while menu controls are focused. React controls
 ### 11.1 MVP persistence
 
 - **FR-SAVE01:** Exactly one active local save slot in **IndexedDB using Dexie.js**.
-- **FR-SAVE02–03:** Manual `Save Game` and `Save & Exit`; do not autosave as a hidden MVP requirement.
+- **FR-SAVE02–03:** Manual `Save Game` and `Save & Exit` are available. The post-MVP checkpoint adds an autosave after inventory, equipment, safehouse or sleep changes and every 30 seconds of active gameplay while awake. These writes use the same slot, ownership and revision checks. Continue displays the saved location, day and time.
 - **FR-SAVE04:** `Continue` only loads a valid, alive, compatible snapshot.
 - **FR-SAVE05:** Each save includes a schema version and world/map version.
 - **FR-SAVE06–07:** Corrupt/unsupported data produces a recoverable error; failed write must not claim success or unnecessarily destroy the last valid save.
@@ -560,7 +560,7 @@ The UI must suppress world input while menu controls are focused. React controls
 **Single local slot across tabs**
 
 - **FR-SAVE15:** Only one tab may own, simulate or modify the local run. Pausing or hiding its tab retains ownership. Other tabs show “This run is open in another tab.” Acquisition requires safe release or proof the prior owner is gone. Silence or elapsed time alone cannot establish abandonment.
-- **FR-SAVE16:** Every gameplay write validates current ownership and the expected save revision inside its committing IndexedDB transaction. Creation, replacement, manual saves, Save & Exit and death invalidation all use this guard. FR-SAVE24 defines the sole alternative for a confirmed damaged record with an unreadable revision. A mismatch aborts the transaction. The save revision is independent of schema and world versions.
+- **FR-SAVE16:** Every gameplay write validates current ownership and the expected save revision inside its committing IndexedDB transaction. Creation, replacement, autosave, manual saves, Save & Exit and death invalidation all use this guard. Finish an in-flight checkpoint before a queued manual save or death invalidation. FR-SAVE24 defines the sole alternative for a confirmed damaged record with an unreadable revision. A mismatch aborts the transaction. The save revision is independent of schema and world versions.
 - **FR-SAVE17:** After acquisition, suspend any cached run. Read and validate the latest committed IndexedDB state and revision before replacing local memory or enabling play. A failed read preserves the frozen in-memory state. Unexpected closure releases no implied save. A replacement owner can recover only a successfully committed state. [Ownership and save decision](adr/0003-exclusive-local-run-and-save-revisions.md)
 - **FR-SAVE18:** A blocked tab may refresh menu availability after release. Only the player's explicit Continue starts an acquisition attempt to resume that run. When two tabs choose Continue, the winner loads the latest committed record under exclusive ownership. The losing tab returns to the blocked state. It must wait for another player action before trying again.
 - **FR-SAVE19:** A save revision conflict freezes gameplay and displays “Your progress wasn’t saved because the local save changed.” Offer **Reload latest save** with the visible warning “Reloading will discard unsaved progress in this tab.” The player's choice authorizes replacing local memory from IndexedDB. Verify exclusive ownership and read the latest committed record and revision before replacing memory. Reload leaves the stored snapshot and revision intact. A validated live run returns to Pause for deliberate Resume, subject to all pause reasons. A dead survivor returns to Main Menu with Continue disabled.

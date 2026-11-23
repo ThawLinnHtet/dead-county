@@ -68,5 +68,9 @@ export function createGamePause(onChange: () => void) {
       else reasons.delete('save');
       update(state.foregroundPanel);
     },
+    holdForSaveConflict() {
+      reasons.add('save');
+      update('pause');
+    },
   };
 }

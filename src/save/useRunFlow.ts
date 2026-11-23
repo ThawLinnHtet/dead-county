@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator';
 import type { GameCoordinator, GameState, SurvivorId } from '../game/gameCoordinator';
+import { houseNames } from '../game/drawNeighborhoodMap';
+import { neighborhoodTime } from '../game/survival';
+import { contains, houses } from '../game/world';
+import { checkpointDue, checkpointIntervalMs } from './checkpoint';
 import { SaveFailure } from './SaveRepository';
 import type { SaveRepository } from './SaveRepository';
 import { captureRun } from './runSnapshot';
@@ -9,7 +13,12 @@ import type { DamagedSaveGuard, SavedRun, SaveRead } from './runSnapshot';
 type Availability = SaveRead['kind'] | 'checking' | 'blocked' | 'read_failed' | 'unavailable';
 type MenuDestination = 'main' | 'survivors';
 type OwnedSlot = { owner: string; revision: number };
-type RunSession = OwnedSlot & { id: string; coordinator: GameCoordinator; committedState: GameState };
+type LoadedRun = OwnedSlot & { id: string; coordinator: GameCoordinator };
+type RunSession = LoadedRun & {
+  committedState: GameState;
+  checkpoint: Promise<boolean> | null;
+  retryCheckpointAt: number;
+};
 type Replacement = OwnedSlot & { characterId: SurvivorId };
 type DamagedReplacement = { owner: string; guard: DamagedSaveGuard; stage: 'confirm' | 'choose' };
 export type DeathSaveStatus = 'pending' | 'failed' | 'conflict' | 'read_failed' | 'verified' | 'complete';
@@ -23,6 +32,7 @@ type PauseRecovery =
 const blockedMessage = 'This run is open in another tab.';
 const storageMessage = 'Couldn’t access the local save. Try again.';
 const revisionMessage = 'Your progress wasn’t saved because the local save changed.';
+const checkpointError: PauseFeedback = { kind: 'error', message: 'Autosave couldn’t finish. Try Save Game.' };
 
 function availabilityMessage(status: Availability, unsupportedReason?: 'newer_schema' | 'world') {
   switch (status) {
@@ -42,6 +52,15 @@ function availabilityMessage(status: Availability, unsupportedReason?: 'newer_sc
 
 function failureKind(error: unknown) {
   return error instanceof SaveFailure ? error.kind : 'storage';
+}
+
+function checkpointLabel(saved: SavedRun) {
+  const { snapshot } = saved;
+  const { day, time } = neighborhoodTime(snapshot.activeTimeMs);
+  const houseId = snapshot.occupiedHouseId === undefined
+    ? houses.find((house) => contains(house, snapshot.survivor.position))?.name
+    : snapshot.occupiedHouseId;
+  return `${(houseId && houseNames[houseId]) || 'Neighborhood'} · Day ${day} · ${time}`;
 }
 
 export function useRunFlow(repository: SaveRepository) {
@@ -65,16 +84,15 @@ export function useRunFlow(repository: SaveRepository) {
   const deathWrite = useRef<Promise<boolean> | null>(null);
   const deathCommitted = useRef(false);
 
-  function displayAvailability(status: Availability, reason?: 'newer_schema' | 'world') {
-    const message = availabilityMessage(status, reason);
+  function displayAvailability(status: Availability, reason?: 'newer_schema' | 'world', saved?: SavedRun) {
+    const message = status === 'ready' && saved ? checkpointLabel(saved) : availabilityMessage(status, reason);
     setAvailability((previous) => previous.status === status && previous.message === message
       ? previous : { status, message });
   }
 
   async function checkAvailability() {
-    if (await repository.isOccupied()) return { status: 'blocked' } as const;
-    const result = await repository.read();
-    return { status: result.kind, reason: result.kind === 'unsupported' ? result.reason : undefined };
+    if (await repository.isOccupied()) return { kind: 'blocked' } as const;
+    return repository.read();
   }
 
   useEffect(() => {
@@ -85,8 +103,11 @@ export function useRunFlow(repository: SaveRepository) {
       if (checking || operation.current || currentRun.current || pendingReplacement.current || pendingDamage.current) return;
       checking = true;
       try {
-        const { status, reason } = await checkAvailability();
-        if (current && !operation.current) displayAvailability(status, reason);
+        const saved = await checkAvailability();
+        if (current && !operation.current) {
+          displayAvailability(saved.kind, saved.kind === 'unsupported' ? saved.reason : undefined,
+            saved.kind === 'ready' ? saved.run : undefined);
+        }
       } catch (error) {
         if (current && !operation.current) {
           displayAvailability(failureKind(error) === 'unavailable' ? 'unavailable' : 'read_failed');
@@ -121,8 +142,8 @@ export function useRunFlow(repository: SaveRepository) {
     setPending(false);
   }
 
-  function enterRun(slot: Omit<RunSession, 'committedState'>) {
-    const active = { ...slot, committedState: slot.coordinator.getState() };
+  function enterRun(slot: LoadedRun) {
+    const active: RunSession = { ...slot, committedState: slot.coordinator.getState(), checkpoint: null, retryCheckpointAt: 0 };
     currentRun.current = active;
     deathWrite.current = null;
     deathCommitted.current = false;
@@ -159,7 +180,8 @@ export function useRunFlow(repository: SaveRepository) {
         return;
       }
       const saved = await repository.read(owner);
-      displayAvailability(saved.kind, saved.kind === 'unsupported' ? saved.reason : undefined);
+      displayAvailability(saved.kind, saved.kind === 'unsupported' ? saved.reason : undefined,
+        saved.kind === 'ready' ? saved.run : undefined);
       await action?.(owner, saved);
     } catch (error) {
       const kind = failureKind(error);
@@ -303,14 +325,56 @@ export function useRunFlow(repository: SaveRepository) {
     }
   }
 
+  function captureAttempt(active: RunSession, exit = false): SaveAttempt {
+    return {
+      exit, revision: active.revision,
+      run: { id: active.id, snapshot: captureRun(active.coordinator) },
+      state: active.coordinator.getState(),
+    };
+  }
+
+  async function commitRun(active: RunSession, attempt: SaveAttempt) {
+    active.revision = await repository.commit(active.owner, attempt.revision, { kind: 'save', run: attempt.run });
+    active.committedState = attempt.state;
+    active.retryCheckpointAt = 0;
+  }
+
+  async function writeCheckpoint(active: RunSession, onSettled: () => void): Promise<boolean> {
+    try {
+      await commitRun(active, captureAttempt(active));
+      setPauseFeedback((feedback) => feedback === checkpointError ? null : feedback);
+      return true;
+    } catch (error) {
+      const kind = failureKind(error);
+      if (kind === 'ownership') {
+        active.coordinator.holdForSaveConflict();
+        await loseRunOwnership(active);
+        return false;
+      }
+      if (kind === 'conflict' || kind === 'invalid') {
+        if (!active.coordinator.getState().gameOver) {
+          active.coordinator.holdForSaveConflict();
+          offerReload();
+        }
+        return false;
+      }
+      active.retryCheckpointAt = performance.now() + checkpointIntervalMs;
+      setPauseFeedback(checkpointError);
+      // A storage failure can be retried by an explicit save against the same revision.
+      return true;
+    } finally {
+      active.checkpoint = null;
+      onSettled();
+    }
+  }
+
   async function writeSave(active: RunSession, attempt: SaveAttempt) {
     operation.current = true;
     setPauseFeedback(null);
     setPauseRecovery(null);
     active.coordinator.setSavePending(true);
     try {
-      active.revision = await repository.commit(active.owner, attempt.revision, { kind: 'save', run: attempt.run });
-      active.committedState = attempt.state;
+      await commitRun(active, attempt);
       if (attempt.exit) {
         await repository.release(active.owner);
         leaveRun('main');
@@ -333,11 +397,15 @@ export function useRunFlow(repository: SaveRepository) {
     if (!active || operation.current || active.coordinator.getState().gameOver) return;
     const { foregroundPanel, tabHidden, savePending } = active.coordinator.getPauseState();
     if (foregroundPanel !== 'pause' || tabHidden || savePending) return;
-    await writeSave(active, {
-      exit, revision: active.revision,
-      run: { id: active.id, snapshot: captureRun(active.coordinator) },
-      state: active.coordinator.getState(),
-    });
+    if (active.checkpoint) {
+      const checkpoint = active.checkpoint;
+      operation.current = true;
+      active.coordinator.setSavePending(true);
+      const safeToSave = await checkpoint;
+      operation.current = false;
+      if (!safeToSave || currentRun.current !== active || active.coordinator.getState().gameOver) return;
+    }
+    await writeSave(active, captureAttempt(active, exit));
   }
 
   async function recoverPause() {
@@ -389,6 +457,9 @@ export function useRunFlow(repository: SaveRepository) {
     setDeathStatus('pending');
     deathWrite.current = (async () => {
       try {
+        // An already-started checkpoint can commit first. Death must win the next write.
+        if (active.checkpoint) await active.checkpoint;
+        if (currentRun.current !== active) return false;
         active.revision = await repository.commit(active.owner, active.revision, { kind: 'invalidate', runId: active.id });
         deathCommitted.current = true;
         setDeathStatus('complete');
@@ -433,12 +504,23 @@ export function useRunFlow(repository: SaveRepository) {
     let foreground = watched.coordinator.getPauseState().foregroundPanel;
     const observeSession = () => {
       updateUnloadWarning();
-      const next = watched.coordinator.getPauseState().foregroundPanel;
+      const { foregroundPanel: next, tabHidden, savePending } = watched.coordinator.getPauseState();
       if (foreground === 'pause' && next !== foreground) setPauseFeedback(null);
       foreground = next;
-      if (observed || !watched.coordinator.getState().gameOver) return;
-      observed = true;
-      void invalidateDeath(watched);
+      if (currentRun.current !== watched) return;
+      const state = watched.coordinator.getState();
+      if (state.gameOver) {
+        if (!observed) {
+          observed = true;
+          void invalidateDeath(watched);
+        }
+        return;
+      }
+      if (!operation.current && !watched.checkpoint && !tabHidden && !savePending
+        && checkpointDue(state, watched.committedState)
+        && performance.now() >= watched.retryCheckpointAt) {
+        watched.checkpoint = writeCheckpoint(watched, observeSession);
+      }
     };
     const unsubscribe = watched.coordinator.subscribe(observeSession);
     observeSession();

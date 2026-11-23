@@ -95,6 +95,7 @@ Do not sample the illustration's brighter red/orange button as a new UI primary 
 - Query the existing `SaveRepository` abstraction for metadata/existence/validity; avoid coupling React menu components directly to Dexie/IndexedDB implementation details.
 - A release notification or menu refresh only updates availability. Wait for the player to choose **Continue**, attempt exclusive acquisition once, then read the latest committed IndexedDB save under that ownership. If another tab wins, show “This run is open in another tab.” A later release again enables a choice on the menu.
 - While save validity is being checked, show a nonmisleading disabled/pending state instead of an active `Continue` that fails immediately.
+- When Continue is available, show the committed location, day and neighborhood time beneath the button. Describe the saved checkpoint, which may be an autosave or a manual save.
 - Hide or disable `Continue` if there is no valid, alive, schema-compatible save (disabled with short explanation is preferred for discoverability).
 - A failed read retains any frozen run and offers **Try reading again**. Retry only the read after verifying ownership. Only a successful read showing an absent record establishes an empty slot.
 - Inspect the save-schema version before validating the payload. Disable Continue for a newer unsupported schema and show “This save uses a newer save format. Open it with a compatible version of Dead County.” Preserve it across menu navigation.
