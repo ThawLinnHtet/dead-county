@@ -1,10 +1,14 @@
-import { useSyncExternalStore } from 'react';
+import { useState, useSyncExternalStore } from 'react';
+import { houseNames } from './drawNeighborhoodMap';
 import type { GameCoordinator } from './gameCoordinator';
+import { eligibleSafehouses, nightsToSecureSafehouse } from './safehouse';
 import { getNeedWarning, roundSurvivalStat, survivalStatNames } from './survival';
 import type { Need, SurvivalStat } from './survival';
 import './survivalMeters.css';
 
-export function SurvivalMeters({ coordinator, location }: { coordinator: GameCoordinator; location: string }) {
+export function SurvivalMeters({ coordinator, houseId, onReturnToWorld }: {
+  coordinator: GameCoordinator; houseId: string | null; onReturnToWorld: () => void;
+}) {
   const characterId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.characterId);
   const bleeding = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().survivor.bleeding);
   const sleeping = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().sleep !== null);
@@ -18,7 +22,7 @@ export function SurvivalMeters({ coordinator, location }: { coordinator: GameCoo
           src={import.meta.env.BASE_URL + (female ? 'assets/ui/survivor-female.webp' : 'assets/ui/survivor-male.webp')}
           alt={female ? 'Female survivor' : 'Male survivor'}
         />
-        <p className="survival-location" role="status">{location}</p>
+        <p className="survival-location" role="status">{(houseId && houseNames[houseId]) || 'Neighborhood'}</p>
       </header>
       <div className="survival-meter-list">
         <SurvivalMeter coordinator={coordinator} stat="health" />
@@ -32,7 +36,51 @@ export function SurvivalMeters({ coordinator, location }: { coordinator: GameCoo
             : restNotice === 'needs' ? 'Woke up with critical hunger or thirst' : 'Awake'}
         </span>}
       </div>
+      <SafehouseStatus key={houseId} coordinator={coordinator} houseId={houseId} sleeping={sleeping}
+        onReturnToWorld={onReturnToWorld} />
     </section>
+  );
+}
+
+function SafehouseStatus({ coordinator, houseId, sleeping, onReturnToWorld }: {
+  coordinator: GameCoordinator; houseId: string | null; sleeping: boolean; onReturnToWorld: () => void;
+}) {
+  const safehouse = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().safehouse);
+  const [confirming, setConfirming] = useState(false);
+  const canChoose = !!houseId && eligibleSafehouses.has(houseId) && houseId !== safehouse?.houseId && !sleeping;
+  if (!safehouse && !canChoose) return null;
+  const completed = safehouse?.nights === nightsToSecureSafehouse;
+
+  function selectHouse() {
+    if (canChoose) coordinator.chooseSafehouse(houseId!);
+    setConfirming(false);
+    onReturnToWorld();
+  }
+
+  return (
+    <div className="safehouse-status">
+      {safehouse && (
+        <div role="status">
+          <strong>Safehouse · {houseNames[safehouse.houseId]}</strong>
+          <span>{safehouse.nights}/{nightsToSecureSafehouse} nights
+            {completed ? ' · Complete' : safehouse.dawnMs !== null ? ' · Stay until 06:00' : ''}</span>
+          {!completed && safehouse.dawnMs === null && <span>Stay inside from 20:00 to 06:00.</span>}
+        </div>
+      )}
+      {canChoose && (confirming ? (
+        <>
+          <p>Move here and restart the night count?</p>
+          <div className="safehouse-actions">
+            <button type="button" onClick={() => { setConfirming(false); onReturnToWorld(); }}>Cancel</button>
+            <button type="button" onClick={selectHouse}>Move here</button>
+          </div>
+        </>
+      ) : (
+        <button type="button" onClick={() => safehouse ? setConfirming(true) : selectHouse()}>
+          {safehouse ? 'Move safehouse here…' : 'Make this your safehouse'}
+        </button>
+      ))}
+    </div>
   );
 }
 

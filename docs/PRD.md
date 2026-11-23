@@ -54,6 +54,14 @@ Installation makes one positional sound that ordinary zombies can investigate. O
 
 Save & Exit and Continue preserve the barricade, door pressure and item locations. Older runs begin without barricades and receive the two new items in their designated containers when space permits. Existing items keep their locations and identities.
 
+### Post-MVP safehouse milestone
+
+The player can name a house with a bed as their safehouse from inside it. The HUD shows the house and the count toward three nights. The neighborhood map identifies the selected home. Moving requires confirmation and starts the count over.
+
+At 20:00 a new night begins. The survivor must be inside the chosen house at dusk and stay until 06:00 to earn one night. Sleeping uses the same clock as staying awake. Leaving forfeits the current night. Save & Exit and Continue preserve the house, earned nights and the night in progress. Completing the third night finishes the milestone and play continues.
+
+Apply the existing Board and Hammer interaction to the closed front door of any house with a bed. House B's living room cabinet and Cedar Workshop carry tools and boards, and Alder Bungalow carries a spare board. The board belongs to one door until removed or destroyed. New stock is finite, and older runs keep existing item locations when it migrates.
+
 ### First-night milestone
 
 The survivor can take supplies from one building and stash them in another. Inventory and Loot still pause simulation. The equipped Canvas Backpack has six slots of its own and adds to the carried weight limit. Players can drag items directly between the open cupboard, backpack and pockets or use labeled buttons. An empty cupboard can reopen for storage. Each transfer moves one existing item instance, and the survivor must unequip a worn item before packing or storing it.

@@ -3,7 +3,7 @@ import test from 'node:test';
 import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator.ts';
 import { alderShelter, workshopLock } from '../game/district.ts';
 import { captureRun, inspectSaveRecord, saveRecord } from './runSnapshot.ts';
-import { containerSlots, expandedStock, knifeCabinetId, seedContainers, starterStock } from '../game/items.ts';
+import { containerSlots, expandedStock, knifeCabinetId, preSafehouseStock, seedContainers, starterStock } from '../game/items.ts';
 import { initiallyClosed, starterZombieSpawns, zombieSpawns } from '../game/world.ts';
 
 const runId = '87501de8-fe8a-4d77-89fc-58094fd940dd';
@@ -68,7 +68,7 @@ test('schema-two migration adds shelter supplies without refilling a previously 
   assert.equal(read.kind, 'ready');
   assert.equal(read.run.snapshot.survivor.equippedPackId, null);
   assert.deepEqual(read.run.snapshot.doorDefenses, {});
-  assert.deepEqual(read.run.snapshot.containers[cabinet]?.map(({ kind }) => kind), ['backpack', 'door_wedge']);
+  assert.deepEqual(read.run.snapshot.containers[cabinet]?.map(({ kind }) => kind), ['backpack', 'door_wedge', 'hammer', 'board']);
 });
 
 test('the current schema preserves equipped gear and migrates schema three with empty pack storage', () => {
@@ -191,8 +191,11 @@ test('schema five supplies migrate once without moving the contents of a full cu
   const { snapshot } = migrated.run;
   assert.deepEqual(snapshot.containers[boardCabinetId], filled);
   assert.equal(snapshot.doorDefenses?.[doorId], undefined);
-  assert.equal(Object.values(snapshot.containers).flat().filter(({ kind }) => kind === 'board').length, 1);
-  assert.equal(Object.values(snapshot.containers).flat().filter(({ kind }) => kind === 'hammer').length, 1);
+  for (const id of [alderShelter.boardCabinetId, alderShelter.hammerCabinetId]) {
+    const kind = id === boardCabinetId ? 'board' : 'hammer';
+    const supply = original.containers[id]!.find((item) => item.kind === kind)!;
+    assert.equal(Object.values(snapshot.containers).flat().filter((item) => item.id === supply.id).length, 1);
+  }
   const reread = inspectSaveRecord(saveRecord(3, migrated.run));
   assert.equal(reread.kind, 'ready');
   assert.deepEqual(reread.run.snapshot.containers, snapshot.containers);
@@ -202,7 +205,7 @@ test('schema six adds the knife once and preserves an in-progress bat swing', ()
   const original = captureRun(createGameCoordinator());
   const bat = original.containers.starter_container![0]!;
   const containers = {
-    ...original.containers,
+    ...seedContainers(preSafehouseStock),
     [knifeCabinetId]: [],
     starter_container: original.containers.starter_container!.slice(1),
   };
@@ -241,7 +244,7 @@ test('Continue restores a strained barricade and rejects impossible defenses', (
   assert.equal(coordinator.useItem(0, board.id).status, 'barricaded');
   coordinator.closeInventoryPanel();
   const captured = captureRun(coordinator);
-  const defense = { wedged: false, barricaded: true, pressureMs: 3500 } as const;
+  const defense = { wedged: false, barricaded: true, pressureMs: 3500, boardItemId: board.id } as const;
   const read = (snapshot: typeof captured) => inspectSaveRecord(saveRecord(2, { id: runId, snapshot }));
   const continued = read({ ...captured, doorDefenses: { [doorId]: defense } });
   assert.equal(continued.kind, 'ready');
@@ -255,4 +258,15 @@ test('Continue restores a strained barricade and rejects impossible defenses', (
     ...captured, doorDefenses: { [doorId]: defense }, containers: original.containers,
     survivor: original.survivor,
   }).kind, 'damaged');
+
+  const previousIds = new Set(Object.values(seedContainers(preSafehouseStock)).flat().map(({ id }) => id));
+  const previousContainers = Object.fromEntries(Object.entries(captured.containers).map(([id, items]) =>
+    [id, items.filter((item) => previousIds.has(item.id))]));
+  const { boardItemId: _boardItemId, ...previousDefense } = defense;
+  const previousSnapshot = { ...captured, containers: previousContainers, doorDefenses: { [doorId]: previousDefense } };
+  const upgraded = inspectSaveRecord({ ...saveRecord(2, { id: runId, snapshot: previousSnapshot }), schemaVersion: 7 });
+  assert.equal(upgraded.kind, 'ready');
+  assert.deepEqual(upgraded.run.snapshot.doorDefenses?.[doorId], defense);
+  assert.deepEqual(upgraded.run.snapshot.survivor.inventory.slice(0, 2), [null, hammer]);
+  assert.equal(upgraded.run.snapshot.safehouse, null);
 });

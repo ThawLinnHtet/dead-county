@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { createGameCoordinator, restoreGameCoordinator } from '../game/gameCoordinator';
-import type { GameCoordinator, SurvivorId } from '../game/gameCoordinator';
+import type { GameCoordinator, GameState, SurvivorId } from '../game/gameCoordinator';
 import { SaveFailure } from './SaveRepository';
 import type { SaveRepository } from './SaveRepository';
 import { captureRun } from './runSnapshot';
@@ -9,12 +9,12 @@ import type { DamagedSaveGuard, SavedRun, SaveRead } from './runSnapshot';
 type Availability = SaveRead['kind'] | 'checking' | 'blocked' | 'read_failed' | 'unavailable';
 type MenuDestination = 'main' | 'survivors';
 type OwnedSlot = { owner: string; revision: number };
-type RunSession = OwnedSlot & { id: string; coordinator: GameCoordinator };
+type RunSession = OwnedSlot & { id: string; coordinator: GameCoordinator; committedState: GameState };
 type Replacement = OwnedSlot & { characterId: SurvivorId };
 type DamagedReplacement = { owner: string; guard: DamagedSaveGuard; stage: 'confirm' | 'choose' };
 export type DeathSaveStatus = 'pending' | 'failed' | 'conflict' | 'read_failed' | 'verified' | 'complete';
 type PauseFeedback = { kind: 'saved' | 'error' | 'progress'; message: string };
-type SaveAttempt = { exit: boolean; revision: number; run: SavedRun };
+type SaveAttempt = { exit: boolean; revision: number; run: SavedRun; state: GameState };
 type PauseRecovery =
   | { kind: 'reload' }
   | { kind: 'retry_write'; attempt: SaveAttempt }
@@ -121,14 +121,15 @@ export function useRunFlow(repository: SaveRepository) {
     setPending(false);
   }
 
-  function enterRun(slot: RunSession) {
-    currentRun.current = slot;
+  function enterRun(slot: Omit<RunSession, 'committedState'>) {
+    const active = { ...slot, committedState: slot.coordinator.getState() };
+    currentRun.current = active;
     deathWrite.current = null;
     deathCommitted.current = false;
     setDeathStatus('pending');
     setPauseFeedback(null);
     setPauseRecovery(null);
-    setSession(slot);
+    setSession(active);
   }
 
   function leaveRun(next: MenuDestination) {
@@ -309,6 +310,7 @@ export function useRunFlow(repository: SaveRepository) {
     active.coordinator.setSavePending(true);
     try {
       active.revision = await repository.commit(active.owner, attempt.revision, { kind: 'save', run: attempt.run });
+      active.committedState = attempt.state;
       if (attempt.exit) {
         await repository.release(active.owner);
         leaveRun('main');
@@ -334,6 +336,7 @@ export function useRunFlow(repository: SaveRepository) {
     await writeSave(active, {
       exit, revision: active.revision,
       run: { id: active.id, snapshot: captureRun(active.coordinator) },
+      state: active.coordinator.getState(),
     });
   }
 
@@ -408,19 +411,41 @@ export function useRunFlow(repository: SaveRepository) {
 
   useEffect(() => {
     if (!session) return;
+    const watched: RunSession = session;
+    let listeningForUnload = false;
+    function hasUnsavedProgress() {
+      const state = watched.coordinator.getState();
+      return currentRun.current === watched && !state.gameOver && state !== watched.committedState;
+    }
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      if (!hasUnsavedProgress()) return;
+      event.preventDefault();
+      event.returnValue = 'unsaved';
+    }
+    function updateUnloadWarning() {
+      const shouldWarn = hasUnsavedProgress();
+      if (shouldWarn === listeningForUnload) return;
+      listeningForUnload = shouldWarn;
+      if (shouldWarn) window.addEventListener('beforeunload', warnBeforeUnload);
+      else window.removeEventListener('beforeunload', warnBeforeUnload);
+    }
     let observed = false;
-    let foreground = session.coordinator.getPauseState().foregroundPanel;
+    let foreground = watched.coordinator.getPauseState().foregroundPanel;
     const observeSession = () => {
-      const next = session.coordinator.getPauseState().foregroundPanel;
+      updateUnloadWarning();
+      const next = watched.coordinator.getPauseState().foregroundPanel;
       if (foreground === 'pause' && next !== foreground) setPauseFeedback(null);
       foreground = next;
-      if (observed || !session.coordinator.getState().gameOver) return;
+      if (observed || !watched.coordinator.getState().gameOver) return;
       observed = true;
-      void invalidateDeath(session);
+      void invalidateDeath(watched);
     };
-    const unsubscribe = session.coordinator.subscribe(observeSession);
+    const unsubscribe = watched.coordinator.subscribe(observeSession);
     observeSession();
-    return unsubscribe;
+    return () => {
+      unsubscribe();
+      window.removeEventListener('beforeunload', warnBeforeUnload);
+    };
   }, [session]);
 
   async function leaveDeadRun(next: MenuDestination) {

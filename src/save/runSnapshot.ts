@@ -2,16 +2,18 @@ import type { GameCoordinator, GameSnapshot } from '../game/gameCoordinator.ts';
 import { batConfig, equippedMeleeKind, meleeWeapons, recoveryDuration, shoveConfig } from '../game/combat.ts';
 import type { AttackState } from '../game/combat.ts';
 import { alderShelter, workshopLock } from '../game/district.ts';
-import { authoredStock, backpackSlots, containerSlots, expandedStock, knifeCabinetId, reachableBeds, seedContainers, starterStock } from '../game/items.ts';
+import { authoredStock, backpackSlots, containerSlots, expandedStock, knifeCabinetId, preSafehouseStock, reachableBeds,
+  seedContainers, starterStock } from '../game/items.ts';
 import type { ItemInstance } from '../game/items.ts';
 import { doorResistance } from '../game/shelter.ts';
+import { eligibleSafehouses, firstSafehouseDawnMs, nightsToSecureSafehouse, safehouseDoorIds, safehouseNightLengthMs } from '../game/safehouse.ts';
 import { canOccupy, contains, hasLineOfSight, houses, mapHeight, mapWidth, openings, starterZombieSpawns, zombieSpawns } from '../game/world.ts';
-import { maximumSleepMs } from '../game/survival.ts';
+import { dayLengthMs, maximumSleepMs } from '../game/survival.ts';
 import type { MapObject, WorldPoint } from '../game/world.ts';
 import { createZombies, zombieConfig } from '../game/zombie.ts';
 import type { ZombieState } from '../game/zombie.ts';
 
-export const saveSchemaVersion = 7;
+export const saveSchemaVersion = 8;
 export const saveWorldVersion = 'neighborhood-2';
 export const slotKey = 'local';
 
@@ -42,10 +44,13 @@ const initialContainers = seedContainers(authoredStock);
 const starterContainers = seedContainers(starterStock);
 const expandedContainers = seedContainers(expandedStock);
 const authoredItems = new Map(Object.values(initialContainers).flat().map((item) => [item.id, item.kind]));
-const preMeleeItems = new Map([...authoredItems].filter(([, kind]) => kind !== 'kitchen_knife'));
+const preSafehouseItems = new Map(Object.values(seedContainers(preSafehouseStock)).flat().map((item) => [item.id, item.kind]));
+const preMeleeItems = new Map([...preSafehouseItems].filter(([, kind]) => kind !== 'kitchen_knife'));
 const preBarricadeItems = new Map([...preMeleeItems].filter(([, kind]) => kind !== 'board' && kind !== 'hammer'));
 const preLockItems = new Map([...preBarricadeItems].filter(([, kind]) => kind !== workshopLock.keyKind));
 const boardId = initialContainers[alderShelter.boardCabinetId]!.find(({ kind }) => kind === 'board')!.id;
+const newSafehouseStock = Object.entries(initialContainers).flatMap(([id, items]) =>
+  items.filter(({ id: itemId }) => !preSafehouseItems.has(itemId)).map((item) => [8, id, item] as const));
 const starterItems = new Map(Object.values(starterContainers).flat().map((item) => [item.id, item.kind]));
 const expandedItems = new Map(Object.values(expandedContainers).flat().map((item) => [item.id, item.kind]));
 // Schema one had no door collision. Preserve walkable thresholds and actor positions when loading it.
@@ -99,6 +104,19 @@ function isNavigationRetry(value: unknown, activeTimeMs: number) {
     && value.failures > 0 && finite(value.nextAttemptAtMs, 0, activeTimeMs + zombieConfig.pathRefreshMs));
 }
 
+function isSafehouse(value: unknown, position: WorldPoint, activeTimeMs: number) {
+  if (value === null) return true;
+  if (!isRecord(value) || typeof value.houseId !== 'string' || !isRevision(value.nights)) return false;
+  const house = eligibleSafehouses.get(value.houseId);
+  const passedDawns = 1 + Math.floor((activeTimeMs - firstSafehouseDawnMs) / dayLengthMs);
+  if (!house || value.nights > Math.min(nightsToSecureSafehouse, passedDawns)) return false;
+  if (value.dawnMs === null) return true;
+  return value.nights < nightsToSecureSafehouse && contains(house, position)
+    && isRevision(value.dawnMs) && value.dawnMs >= firstSafehouseDawnMs
+    && (value.dawnMs - firstSafehouseDawnMs) % dayLengthMs === 0
+    && activeTimeMs >= value.dawnMs - safehouseNightLengthMs && activeTimeMs < value.dawnMs;
+}
+
 function isZombie(value: unknown, index: number, activeTimeMs: number, closed: readonly MapObject[], schema: number) {
   const authored = zombieSpawns[index];
   if (!authored || !isRecord(value)) return false;
@@ -131,7 +149,7 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
   const older = schema < 3;
   const {
     survivor, containers, droppedItems, zombies, activeTimeMs, occupiedHouseId,
-    closedOpeningIds, lockedDoorIds, doorDefenses, packs, sleep,
+    closedOpeningIds, lockedDoorIds, doorDefenses, packs, sleep, safehouse,
   } = value;
   if (!legacy && (!Array.isArray(closedOpeningIds) || closedOpeningIds.length > openings.length
       || closedOpeningIds.length !== new Set(closedOpeningIds).size
@@ -142,15 +160,20 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
       || !closed.some(({ name }) => name === workshopLock.doorId))))) return false;
   const stockByContainer = legacy ? starterContainers : older ? expandedContainers : initialContainers;
   const allowedItems = legacy ? starterItems : older ? expandedItems
-    : schema < 5 ? preLockItems : schema < 6 ? preBarricadeItems : schema < 7 ? preMeleeItems : authoredItems;
+    : schema < 5 ? preLockItems : schema < 6 ? preBarricadeItems : schema < 7 ? preMeleeItems
+      : schema < 8 ? preSafehouseItems : authoredItems;
   if (!older && (!isRecord(doorDefenses) || Object.keys(doorDefenses).length > closed.length
     || !Object.entries(doorDefenses).every(([id, defense]) =>
       closed.some((door) => door.name === id && door.type === 'door') && isRecord(defense)
       && typeof defense.wedged === 'boolean'
-      && (defense.barricaded === undefined
-        || (schema >= 6 && defense.barricaded === true && id === alderShelter.doorId && !defense.wedged))
+      && (defense.barricaded === undefined ? defense.boardItemId === undefined
+        : defense.barricaded === true && !defense.wedged && (schema >= 8
+          ? safehouseDoorIds.has(id) && typeof defense.boardItemId === 'string' && allowedItems.get(defense.boardItemId) === 'board'
+          : schema >= 6 && id === alderShelter.doorId && defense.boardItemId === undefined))
       && finite(defense.pressureMs)
-      && defense.pressureMs < doorResistance({ wedged: defense.wedged, ...(defense.barricaded && { barricaded: true }) })))) return false;
+      && defense.pressureMs < doorResistance({
+        wedged: defense.wedged, barricaded: defense.barricaded === true ? true : undefined,
+      })))) return false;
   if (occupiedHouseId !== undefined && occupiedHouseId !== null
       && !houses.some(({ name }) => name === occupiedHouseId)) return false;
   const shoving = !older && isRecord(survivor.attack) && survivor.attack.kind === 'shove';
@@ -213,8 +236,13 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
           .some(({ object }) => object.name === sleep.bedId)) return false;
     }
   }
-  const alderDefense = isRecord(doorDefenses) ? doorDefenses[alderShelter.doorId] : null;
-  if (isRecord(alderDefense) && alderDefense.barricaded === true && seen.has(boardId)) return false;
+  if (schema >= 8 && !isSafehouse(safehouse, survivor.position, activeTimeMs)) return false;
+  if (isRecord(doorDefenses)) {
+    for (const defense of Object.values(doorDefenses)) {
+      if (isRecord(defense) && defense.barricaded === true
+        && !claim({ id: schema >= 8 ? defense.boardItemId : boardId, kind: 'board' })) return false;
+    }
+  }
   for (const [index, zombie] of zombies.entries()) {
     if (!isZombie(zombie, index, activeTimeMs, closed, schema)) return false;
   }
@@ -224,12 +252,12 @@ function isAliveSnapshot(value: unknown, schema: number): value is GameSnapshot 
 export function captureRun(coordinator: GameCoordinator): GameSnapshot {
   const {
     survivor, containers, packs, sleep, droppedItems, zombies, activeTimeMs, occupiedHouseId,
-    closedOpeningIds, lockedDoorIds, doorDefenses,
+    closedOpeningIds, lockedDoorIds, doorDefenses, safehouse,
   } = coordinator.getState();
   const { gait: _gait, steppingBack: _steppingBack, ...savedSurvivor } = survivor;
   return {
     survivor: savedSurvivor, containers, packs, sleep, droppedItems, zombies, activeTimeMs, occupiedHouseId,
-    closedOpeningIds, lockedDoorIds, doorDefenses,
+    closedOpeningIds, lockedDoorIds, doorDefenses, safehouse,
   };
 }
 
@@ -269,7 +297,7 @@ function copyBehavior(behavior: ZombieState['behavior']): ZombieState['behavior'
 
 function copySnapshot({
   survivor, containers, packs, sleep, droppedItems, zombies, activeTimeMs, occupiedHouseId,
-  closedOpeningIds, lockedDoorIds, doorDefenses,
+  closedOpeningIds, lockedDoorIds, doorDefenses, safehouse,
 }: GameSnapshot, schema: number): GameSnapshot {
   const legacy = schema === 1;
   const older = schema < 3;
@@ -285,13 +313,13 @@ function copySnapshot({
     const newItems = older ? authored.filter((item) => preLockItems.has(item.id) && !oldItems.has(item.id)) : [];
     return [id, [...items, ...newItems].map(copyItem)];
   }));
-  for (const [introducedIn, id, kind] of [
-    [6, alderShelter.hammerCabinetId, 'hammer'],
-    [6, alderShelter.boardCabinetId, 'board'],
-    [7, knifeCabinetId, 'kitchen_knife'],
+  for (const [introducedIn, id, item] of [
+    [6, alderShelter.hammerCabinetId, initialContainers[alderShelter.hammerCabinetId]!.find(({ kind }) => kind === 'hammer')!],
+    [6, alderShelter.boardCabinetId, initialContainers[alderShelter.boardCabinetId]!.find(({ kind }) => kind === 'board')!],
+    [7, knifeCabinetId, initialContainers[knifeCabinetId]!.find(({ kind }) => kind === 'kitchen_knife')!],
+    ...newSafehouseStock,
   ] as const) {
     if (schema >= introducedIn) continue;
-    const item = initialContainers[id]!.find((entry) => entry.kind === kind)!;
     // A player may have filled the original cupboard with a stash.
     const destination = restoredContainers[id]!.length < containerSlots ? restoredContainers[id]
       : Object.values(restoredContainers).find((items) => items.length < containerSlots);
@@ -303,8 +331,10 @@ function copySnapshot({
     closedOpeningIds: [...(legacy ? legacyClosedOpeningIds : closedOpeningIds ?? [])],
     lockedDoorIds: schema >= 5 ? [...lockedDoorIds!] : [],
     doorDefenses: older ? {} : Object.fromEntries(Object.entries(doorDefenses!).map(([id, defense]) => [
-      id, { pressureMs: defense!.pressureMs, wedged: defense!.wedged, ...(defense!.barricaded && { barricaded: true }) },
+      id, { pressureMs: defense!.pressureMs, wedged: defense!.wedged,
+        ...(defense!.barricaded && { barricaded: true, boardItemId: schema >= 8 ? defense!.boardItemId : boardId }) },
     ])),
+    safehouse: schema >= 8 && safehouse ? { houseId: safehouse.houseId, nights: safehouse.nights, dawnMs: safehouse.dawnMs } : null,
     survivor: {
       characterId, position: copyPoint(position), health, stamina, hunger, thirst,
       fatigue: schema >= 4 ? survivor.fatigue : 0,

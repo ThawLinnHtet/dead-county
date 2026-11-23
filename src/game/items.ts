@@ -42,11 +42,11 @@ export const itemDefinitions = {
   },
   board: {
     name: 'Board', category: 'Shelter', weight: .65,
-    description: 'Use with a Hammer from inside beside the closed front door of Alder House.',
+    description: 'Use with a Hammer from inside beside the closed front door of a house with a bed.',
   },
   hammer: {
     name: 'Hammer', category: 'Tool', weight: .45,
-    description: 'Carry it in a pocket or your worn backpack to install a Board at Alder House.',
+    description: 'Carry it in a pocket or your worn backpack to install Boards at house doors.',
   },
   workshop_key: {
     name: 'Workshop Key', category: 'Key', description: 'Carry it in your inventory or worn backpack to unlock Cedar Workshop.', weight: .05,
@@ -98,12 +98,22 @@ export const expandedStock: ContainerStock = {
   ...Object.fromEntries(districtBuildings.map(({ id, unexpandedStock }) => [`${id}_cabinet`, unexpandedStock])),
 };
 
-export const authoredStock: ContainerStock = {
+export const preSafehouseStock: ContainerStock = {
   ...starterStock,
   [knifeCabinetId]: [...starterStock[knifeCabinetId]!, 'kitchen_knife'],
   house_b_living_cabinet: [...starterStock.house_b_living_cabinet!, 'backpack', 'door_wedge'],
   ...Object.fromEntries(districtBuildings.map(({ id, stock }) => [`${id}_cabinet`, stock])),
 };
+
+const safehouseSupplies: ContainerStock = {
+  house_b_living_cabinet: ['hammer', 'board'],
+  lot_1_3_cabinet: ['board'],
+  lot_3_1_cabinet: ['hammer', 'board', 'board'],
+};
+
+export const authoredStock: ContainerStock = Object.fromEntries(Object.entries(preSafehouseStock).map(([id, items]) =>
+  [id, [...items, ...safehouseSupplies[id] ?? []]],
+));
 
 const containerTypes = new Set(['cabinet', 'drawer', 'supply_box']);
 const indoorContainers = furniture.flatMap((object) => {

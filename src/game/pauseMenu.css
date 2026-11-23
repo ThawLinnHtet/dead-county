@@ -117,6 +117,14 @@
   text-align: center;
 }
 
+.pause-menu__save-help {
+  margin: .65rem 0 0;
+  color: var(--field-muted);
+  font-size: .8rem;
+  line-height: 1.4;
+  text-align: center;
+}
+
 .pause-menu__recovery {
   display: grid;
   gap: .65rem;

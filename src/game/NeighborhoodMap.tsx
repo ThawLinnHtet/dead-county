@@ -86,17 +86,19 @@ const fullMapStyle: CSSProperties = { aspectRatio: mapWidth + ' / ' + mapHeight 
 
 function FullMapChart({ coordinator }: { coordinator: GameCoordinator }) {
   const { position, facing } = useSurvivorMarker(coordinator);
+  const safehouseId = useSyncExternalStore(coordinator.subscribe, () => coordinator.getState().safehouse?.houseId);
   return (
     <div className="full-map__chart" style={fullMapStyle}>
       <img src={getNeighborhoodMapImage()} alt="" draggable={false} />
       <span className="map-north full-map__north" aria-hidden="true">N ↑</span>
-      {roofs.filter(({ name }) => labeledBuildings.has(name)).map(({ name, x, y, width, height }) => (
+      {roofs.filter(({ name }) => labeledBuildings.has(name) || name === safehouseId).map(({ name, x, y, width, height }) => (
         <span
           key={name}
           className="full-map__house"
+          data-safehouse={name === safehouseId || undefined}
           style={{ left: (x + width / 2) / mapWidth * 100 + '%', top: (y + height / 2) / mapHeight * 100 + '%' }}
         >
-          {houseNames[name]}
+          {houseNames[name]}{name === safehouseId && <small>Safehouse</small>}
         </span>
       ))}
       <PlayerMarker x={position.x / mapWidth * 100} y={position.y / mapHeight * 100} facing={facing} />

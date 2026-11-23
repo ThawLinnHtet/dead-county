@@ -31,7 +31,7 @@ The **bottom 10-cell bar** mirrors the canonical inventory and provides click ac
 | **Upper-right, beside minimap** | **Elapsed survival duration** | Small time panel, e.g. `Survived 00:42:17`; count active gameplay time only, **not** a world clock |
 | **Upper-right** | Circular minimap | Approx. 150px diameter as an initial design baseline, dark outer ring, `N` label, roads/houses/player arrow |
 | **Bottom-center** | Equipped bat / quick inventory | Restrained 10-cell row with clickable occupied slots. See §5. |
-| **Lower-right** | Compact optional static controls legend | `I Inventory`, `M Map`, `Esc Pause`; no interactive clicks required for passive legend |
+| **Lower-right** | Compact controls legend and Pause button | Controls expand on demand. **Pause** opens the same menu as `Esc`. |
 | **Near a valid in-world target** | `E Search` or `E Pick up <item name>` | One prompt anchored to the selected container or dropped item (see §4) |
 
 ### 2.1 Survival bars and numeric semantics

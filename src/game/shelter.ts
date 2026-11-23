@@ -6,6 +6,7 @@ export interface DoorDefense {
   readonly pressureMs: number;
   readonly wedged: boolean;
   readonly barricaded?: true;
+  readonly boardItemId?: string;
 }
 
 export type DoorDefenses = Readonly<Partial<Record<string, DoorDefense>>>;

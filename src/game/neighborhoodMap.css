@@ -272,6 +272,18 @@
   white-space: nowrap;
 }
 
+.full-map__house[data-safehouse] {
+  z-index: 2;
+  border-color: #e2c38d;
+  color: #f4d89f;
+}
+
+.full-map__house small {
+  display: block;
+  font-size: .65rem;
+  text-align: center;
+}
+
 .full-map__legend {
   display: flex;
   flex-wrap: wrap;

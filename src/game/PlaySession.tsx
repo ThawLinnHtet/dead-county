@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { formatSurvivalTime } from '../ui/formatSurvivalTime';
 import { GameOverScreen } from '../ui/GameOverScreen';
 import type { DeathSaveStatus } from '../save/useRunFlow';
-import { houseNames } from './drawNeighborhoodMap';
 import { GameViewport } from './GameViewport';
 import type { GameAudio } from './gameAudio';
 import type { GameCoordinator, GameOverResult } from './gameCoordinator';
@@ -114,7 +113,8 @@ export function PlaySession({
       <div ref={foreground} inert={pause.isPaused || gameOver !== null}>
         <GameViewport coordinator={coordinator} audio={audio} onDeathAnimationEnd={revealGameOver} />
         <div className="neighborhood-night" style={{ opacity: clock.darkness }} aria-hidden="true" />
-        <SurvivalMeters coordinator={coordinator} location={houseNames[occupiedHouseId ?? ''] ?? 'Neighborhood'} />
+        <SurvivalMeters coordinator={coordinator} houseId={occupiedHouseId}
+          onReturnToWorld={() => focusGameplay(foreground.current)} />
         <div className="map-hud">
           <div className="survival-clock field-frame">
             <span className="survival-clock-label">Survival Time</span>
@@ -148,13 +148,21 @@ export function PlaySession({
               <span className="movement-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span> Move
             </div>
           )}
-          <button className="movement-hint__toggle" type="button" aria-expanded={controlsOpen}
-            aria-controls="game-controls" onClick={(event) => {
-              setControlsOpen(!controlsOpen);
-              if (event.detail > 0) focusGameplay(foreground.current);
-            }}>
-            Controls
-          </button>
+          <div className="movement-hint__actions">
+            <button className="movement-hint__toggle" type="button" aria-expanded={controlsOpen}
+              aria-controls="game-controls" onClick={(event) => {
+                setControlsOpen(!controlsOpen);
+                if (event.detail > 0) focusGameplay(foreground.current);
+              }}>
+              Controls
+            </button>
+            <button className="movement-hint__pause" type="button" aria-haspopup="dialog"
+              aria-keyshortcuts="Escape" onClick={() => {
+                if (!coordinator.getPauseState().isPaused) coordinator.handleEscape();
+              }}>
+              Pause <kbd aria-hidden="true">Esc</kbd>
+            </button>
+          </div>
         </aside>
       </div>
       {!gameOver && (
