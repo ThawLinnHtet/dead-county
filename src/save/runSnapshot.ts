@@ -77,10 +77,11 @@ function direction(value: unknown) {
     && Math.abs(Math.hypot(value.x, value.y) - 1) <= 1e-6;
 }
 
-function attack(value: unknown, timing: Pick<typeof batConfig, 'windupMs' | 'contactMs' | 'recoveryMs'>, kind?: AttackState['kind'], allowTired = false) {
+function attack(value: unknown, timing: Pick<typeof batConfig, 'windupMs' | 'contactMs' | 'recoveryMs'>, kind?: AttackState['kind'], survivorSwing = false) {
   if (value === null) return true;
   if (!isRecord(value) || value.kind !== kind || !direction(value.direction) || typeof value.damageApplied !== 'boolean') return false;
-  if (value.tired !== undefined && !(allowTired && value.tired === true)) return false;
+  if (value.tired !== undefined && !(survivorSwing && value.tired === true)) return false;
+  if (value.lowStrike !== undefined && !(survivorSwing && value.lowStrike === true)) return false;
   if (kind === 'stagger' || kind === 'knockdown') {
     const maximum = kind === 'stagger' ? shoveConfig.staggerMs : shoveConfig.knockdownMs;
     return value.phase === 'recovery' && !value.damageApplied && finite(value.remainingMs, Number.MIN_VALUE, maximum);
@@ -251,8 +252,11 @@ function copyItem({ id, kind }: ItemInstance): ItemInstance {
 
 function copyAttack(attack: GameSnapshot['survivor']['attack']): GameSnapshot['survivor']['attack'] {
   if (!attack) return null;
-  const { phase, direction, remainingMs, damageApplied, kind, tired } = attack;
-  return { phase, direction: copyPoint(direction), remainingMs, damageApplied, ...(kind && { kind }), ...(tired && { tired }) };
+  const { phase, direction, remainingMs, damageApplied, kind, tired, lowStrike } = attack;
+  return {
+    phase, direction: copyPoint(direction), remainingMs, damageApplied,
+    ...(kind && { kind }), ...(tired && { tired }), ...(lowStrike && { lowStrike }),
+  };
 }
 
 function copyBehavior(behavior: ZombieState['behavior']): ZombieState['behavior'] {

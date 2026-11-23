@@ -107,6 +107,27 @@ test('Continue preserves a tired knife swing and the time a zombie has left on t
   assert.notEqual(continued.getState().zombies[0]!.attack?.kind, 'knockdown');
 });
 
+test('a bat swing at a downed zombie preserves its downward pose and normal hit through Continue', () => {
+  const position = { x: 12.55, y: 9.15 };
+  const original = encounter({ x: 11.9, y: 9.15 }, {
+    position,
+    attack: { kind: 'knockdown', phase: 'recovery', direction: { x: -1, y: 0 }, remainingMs: 850, damageApplied: false },
+  });
+  assert.equal(original.search('starter_container'), true);
+  const bat = original.getState().containers.starter_container![0]!;
+  assert.equal(original.transferItem('starter_container', bat.id).status, 'transferred');
+  assert.equal(original.toggleEquip(0, bat.id), true);
+  original.closeInventoryPanel();
+  const initialHealth = original.getState().zombies[0]!.health;
+  assert.equal(original.startMeleeSwing(position), true);
+  original.step(100);
+  const continued = pauseAndContinue(original);
+  assert.equal(continued.getState().survivor.attack?.lowStrike, true);
+  const contact = matchedStep(original, continued, 150);
+  assert.equal(contact.survivor.attack?.damageApplied, true);
+  assert.equal(contact.zombies[0]!.health, initialHealth - meleeWeapons.baseball_bat.damage);
+});
+
 test('an unreachable wander target keeps its retry interval and chooses again only on active steps', () => {
   const original = encounter(farAway, {
     position: { x: 16.2, y: 6.9 },
