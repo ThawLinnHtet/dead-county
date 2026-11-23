@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useId, useLayoutEffect, useRef } from 'react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import type { PauseState } from './gamePause';
 import './pauseMenu.css';
@@ -26,6 +26,7 @@ export function PauseMenu({
   const recoveryButton = useRef<HTMLButtonElement>(null);
   const canSave = saveActions && !pause.savePending && !pause.tabHidden;
   const recovery = saveActions?.recovery;
+  const saveHelpId = useId();
 
   useLayoutEffect(() => {
     const menu = dialog.current;
@@ -58,6 +59,7 @@ export function PauseMenu({
       ref={dialog}
       className="pause-menu"
       aria-label="Pause Menu"
+      aria-describedby={saveActions && !recovery ? saveHelpId : undefined}
       onCancel={(event) => event.preventDefault()}
       onKeyDown={trapFocus}
     >
@@ -92,6 +94,11 @@ export function PauseMenu({
           Save &amp; Exit
         </button>
       </div>
+      {saveActions && !recovery && (
+        <p className="pause-menu__save-help" id={saveHelpId}>
+          Continue loads your last save. Save before closing or refreshing this tab.
+        </p>
+      )}
       {saveActions?.feedback
         ? <p className="pause-menu__status" role={saveActions.feedback.kind === 'error' ? 'alert' : 'status'}>
             {saveActions.feedback.message}

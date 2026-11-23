@@ -148,13 +148,21 @@ export function PlaySession({
               <span className="movement-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span> Move
             </div>
           )}
-          <button className="movement-hint__toggle" type="button" aria-expanded={controlsOpen}
-            aria-controls="game-controls" onClick={(event) => {
-              setControlsOpen(!controlsOpen);
-              if (event.detail > 0) focusGameplay(foreground.current);
-            }}>
-            Controls
-          </button>
+          <div className="movement-hint__actions">
+            <button className="movement-hint__toggle" type="button" aria-expanded={controlsOpen}
+              aria-controls="game-controls" onClick={(event) => {
+                setControlsOpen(!controlsOpen);
+                if (event.detail > 0) focusGameplay(foreground.current);
+              }}>
+              Controls
+            </button>
+            <button className="movement-hint__pause" type="button" aria-haspopup="dialog"
+              aria-keyshortcuts="Escape" onClick={() => {
+                if (!coordinator.getPauseState().isPaused) coordinator.handleEscape();
+              }}>
+              Pause <kbd aria-hidden="true">Esc</kbd>
+            </button>
+          </div>
         </aside>
       </div>
       {!gameOver && (

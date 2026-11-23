@@ -137,9 +137,14 @@ body {
   gap: .5rem;
 }
 
-.movement-hint__toggle {
+.movement-hint__actions {
   display: flex;
-  width: 100%;
+}
+
+.movement-hint__toggle,
+.movement-hint__pause {
+  display: flex;
+  flex: 1;
   min-height: 2.25rem;
   align-items: center;
   justify-content: space-between;
@@ -149,6 +154,10 @@ body {
   font: 400 1.05rem/1 var(--dc-font-display);
   letter-spacing: .065em;
   cursor: pointer;
+}
+
+.movement-hint__pause {
+  border-left: 1px solid var(--field-border);
 }
 
 .movement-hint__toggle::after {
@@ -166,9 +175,11 @@ body {
   rotate: 225deg;
 }
 
-.movement-hint__toggle:hover { color: var(--dc-warning); }
+.movement-hint__toggle:hover,
+.movement-hint__pause:hover { color: var(--dc-warning); }
 
-.movement-hint__toggle:focus-visible {
+.movement-hint__toggle:focus-visible,
+.movement-hint__pause:focus-visible {
   outline: 2px solid var(--dc-focus);
   outline-offset: -2px;
 }
