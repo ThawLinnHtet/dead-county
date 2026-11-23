@@ -825,6 +825,9 @@ function makeGameCoordinator({
 
       const facing = aimFrom(survivor.position, target)
         ?? (pointerTarget && aimFrom(survivor.position, pointerTarget)) ?? survivor.facing;
+      const targetAtWindup = selectMeleeTarget(survivor.position, facing, state.zombies,
+        traversal.hasLineOfSight, meleeWeapons[weapon]);
+      const lowStrike = targetAtWindup?.attack?.kind === 'knockdown';
       if (!ready) pointerTarget = null;
       state = {
         ...state,
@@ -836,6 +839,7 @@ function makeGameCoordinator({
           attack: {
             ...beginAttack(facing, meleeWeapons[weapon]),
             ...(survivor.stamina < lowStaminaSwingThreshold && { tired: true }),
+            ...(lowStrike && { lowStrike: true }),
           },
         },
       };

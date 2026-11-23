@@ -51,6 +51,7 @@ export const shoveConfig = {
 export interface AttackState {
   readonly kind?: 'shove' | 'stagger' | 'knockdown';
   readonly tired?: true;
+  readonly lowStrike?: true;
   readonly phase: 'windup' | 'contact' | 'recovery';
   readonly remainingMs: number;
   readonly direction: WorldPoint;
