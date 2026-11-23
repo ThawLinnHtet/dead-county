@@ -89,6 +89,7 @@ The visible game frame and current world positions remain unchanged. Avoid dupli
 - Validate the save data; do not serialize decorative scene geometry or use roof opacity as gameplay truth. On load, derive indoor roof visibility from saved player occupancy before the first gameplay frame.
 - Dead runs are **non-continuable**. Death routes to Game Over and invalidates the one active Continue save as defined by `PRD.md`; this Pause Menu cannot be used to rescue a dead run.
 - There is **no MVP autosave**, separate Load Game screen, multiple saves, cloud backup, save previews, user account, or world clock. The Pause menu reminds players that Continue loads the most recent manual save. Closing or refreshing the tab discards progress made after that save.
+- While a live run has unsaved progress, request the browser's leave confirmation for closing, refreshing or navigating away. Cancel keeps the active run. Successful saves clear the warning until the simulation changes again. Switching tabs uses the usual visibility pause.
 - The repository validates ownership and the expected revision in the same IndexedDB transaction as the write, including on every retry.
 
 ### 5.4 Save conflict recovery
