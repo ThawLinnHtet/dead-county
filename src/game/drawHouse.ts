@@ -1,5 +1,6 @@
 import { artBounds, at, box, floor, inset, nearDepth, noise, shape, stroke } from './isometricDrawing';
-import { alderShelter, districtBuildings } from './district';
+import { districtBuildings } from './district';
+import { safehouseDoorIds } from './safehouse';
 import { details, houses, openings, project, roofs, walls } from './world';
 import type { MapObject, WorldRect } from './world';
 
@@ -206,7 +207,7 @@ function drawDoor(scene: Phaser.Scene, opening: MapObject) {
   const open = alongY
     ? { x: x + width, y: leaf.y - leaf.height, width: .07, height: leaf.height }
     : { x: leaf.x - leaf.width, y: y + height, width: leaf.width, height: .07 };
-  const barricade = opening.name === alderShelter.doorId
+  const barricade = safehouseDoorIds.has(opening.name)
     ? scene.add.graphics().setDepth(depth - .016).setVisible(false) : null;
   if (barricade) {
     const board = [face(-.07, 19), face(.99, 31), face(.99, 42), face(-.07, 30)];

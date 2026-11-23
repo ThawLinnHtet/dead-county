@@ -3,7 +3,6 @@ import type { ReactNode } from 'react';
 import { formatSurvivalTime } from '../ui/formatSurvivalTime';
 import { GameOverScreen } from '../ui/GameOverScreen';
 import type { DeathSaveStatus } from '../save/useRunFlow';
-import { houseNames } from './drawNeighborhoodMap';
 import { GameViewport } from './GameViewport';
 import type { GameAudio } from './gameAudio';
 import type { GameCoordinator, GameOverResult } from './gameCoordinator';
@@ -114,7 +113,8 @@ export function PlaySession({
       <div ref={foreground} inert={pause.isPaused || gameOver !== null}>
         <GameViewport coordinator={coordinator} audio={audio} onDeathAnimationEnd={revealGameOver} />
         <div className="neighborhood-night" style={{ opacity: clock.darkness }} aria-hidden="true" />
-        <SurvivalMeters coordinator={coordinator} location={houseNames[occupiedHouseId ?? ''] ?? 'Neighborhood'} />
+        <SurvivalMeters coordinator={coordinator} houseId={occupiedHouseId}
+          onReturnToWorld={() => focusGameplay(foreground.current)} />
         <div className="map-hud">
           <div className="survival-clock field-frame">
             <span className="survival-clock-label">Survival Time</span>

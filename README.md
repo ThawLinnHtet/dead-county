@@ -39,6 +39,8 @@ The Corner Store stocks a Hammer, and Alder House has a Board and a side window.
 
 Fatigue builds while you are awake. Close the entrance to your chosen shelter, take care of Hunger and Thirst, and use **E Sleep** beside a bed. Sleep runs the neighborhood clock and zombie activity faster. You can wake with **E**, and danger or critical needs can wake you early. Stashed supplies, fatigue, and remaining sleep carry over through Continue.
 
+Stand inside a house with a bed and select **Make this your safehouse** under the survival meters. Use **M** to find it again after a supply run. Stay inside from **20:00 to 06:00** on three nights, awake or asleep. Once you have a Board and Hammer, you can barricade any eligible house's closed front door from inside. House B's living room cabinet is another place to find both items.
+
 ## Controls
 
 | Input | Action |

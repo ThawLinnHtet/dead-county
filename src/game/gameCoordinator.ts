@@ -1,7 +1,7 @@
 import { advanceAttack, aimFrom, batConfig, beginAttack, equippedMeleeKind, isMeleeWeapon, lowStaminaSwingThreshold, meleeWeapons,
   selectMeleeTarget, shoveConfig } from './combat.ts';
 import type { AttackState } from './combat.ts';
-import { alderShelter, workshopLock } from './district.ts';
+import { workshopLock } from './district.ts';
 import { actorRadius, contains, createTraversal, hasLineOfSight, houses, initiallyClosed, openings, overlapsOpening, survivorSpawn, unproject } from './world.ts';
 import type { MapObject, WorldPoint } from './world.ts';
 import { createGamePause } from './gamePause.ts';
@@ -15,6 +15,8 @@ import type { WorldSound, ZombieSpawn, ZombieState } from './zombie.ts';
 import { fatiguePerMs, getNeedWarning, getSurvivalStep, neighborhoodDarkness, plannedSleepMs, sleepRecoveryPerMs, sleepSpeed } from './survival.ts';
 import { advanceDoorPressure, doorResistance, doorStrain, findClosedDoorApproach, openingCenter } from './shelter.ts';
 import type { DoorDefenses, DoorStrain } from './shelter.ts';
+import { advanceSafehouse, eligibleSafehouses } from './safehouse.ts';
+import type { SafehouseProgress } from './safehouse.ts';
 
 export type SurvivorId = 'survivor_male' | 'survivor_female';
 
@@ -54,6 +56,7 @@ export interface GameState {
   readonly closedOpeningIds: readonly string[];
   readonly lockedDoorIds: readonly string[];
   readonly doorDefenses: DoorDefenses;
+  readonly safehouse: SafehouseProgress | null;
   readonly activeTimeMs: number;
   readonly gameOver: GameOverResult | null;
 }
@@ -73,6 +76,7 @@ export interface GameSnapshot {
   readonly closedOpeningIds?: readonly string[];
   readonly lockedDoorIds?: readonly string[];
   readonly doorDefenses?: DoorDefenses;
+  readonly safehouse?: GameState['safehouse'];
 }
 
 export interface GameCoordinator extends ReturnType<typeof createGamePause> {
@@ -90,6 +94,7 @@ export interface GameCoordinator extends ReturnType<typeof createGamePause> {
   step(deltaMs: number): GameState;
   startMeleeSwing(target: WorldPoint): boolean;
   startShove(): boolean;
+  chooseSafehouse(houseId: string): boolean;
   getInteractionTarget(): InteractionTarget | null;
   interact(displayed: InteractionTarget): InteractionResult;
   getSearchTarget(): MapObject | null;
@@ -262,6 +267,7 @@ function makeGameCoordinator({
     lockedDoorIds: snapshot ? snapshot.lockedDoorIds ?? []
       : closedOpeningIds.includes(workshopLock.doorId) ? [workshopLock.doorId] : [],
     doorDefenses: snapshot?.doorDefenses ?? {},
+    safehouse: snapshot?.safehouse ?? null,
     activeTimeMs: snapshot?.activeTimeMs ?? 0,
     gameOver: null,
   };
@@ -433,7 +439,8 @@ function makeGameCoordinator({
         const target = {
           kind: 'opening' as const, id: object.name, position: point, object,
           closed: closed.includes(object), wedged: defense?.wedged ?? false, strain: doorStrain(defense),
-          barricade: defense?.barricaded ? (state.occupiedHouseId === alderShelter.houseId ? 'inside' as const : 'outside' as const) : null,
+          barricade: defense?.barricaded
+            ? (object.name === state.occupiedHouseId + '_door' ? 'inside' as const : 'outside' as const) : null,
           lock: getDoorLock(object.name),
         };
         return [{ target, distance }];
@@ -611,10 +618,12 @@ function makeGameCoordinator({
       return { status: 'eligible', door, reinforcement: 'wedged' };
     }
     if (item.kind === 'board') {
-      const door = closed.find(({ name }) => name === alderShelter.doorId);
-      if (!door || state.occupiedHouseId !== alderShelter.houseId
+      const houseId = state.occupiedHouseId;
+      const house = houseId ? eligibleSafehouses.get(houseId) : undefined;
+      const door = house && closed.find(({ name }) => name === house.name + '_door');
+      if (!door || !contains(house, survivor.position)
         || !Number.isFinite(openingDistance(door, survivor.position))) {
-        return { status: 'no_benefit', reason: 'Stand inside beside the closed front door of Alder House.' };
+        return { status: 'no_benefit', reason: 'Stand inside a house with a bed, beside its closed front door.' };
       }
       const defense = state.doorDefenses[door.name];
       if (defense?.barricaded || defense?.wedged) return { status: 'no_benefit', reason: 'This door is already reinforced.' };
@@ -695,6 +704,9 @@ function makeGameCoordinator({
     }, 0);
     const health = Math.max(0, previous.health - needDamage - biteDamage);
     const gameOver = health === 0 ? { survivorId: previous.characterId, finalActiveTimeMs: activeTimeMs } : null;
+    const safehouseZone = state.safehouse && eligibleSafehouses.get(state.safehouse.houseId);
+    const stayedInside = !gameOver && !!safehouseZone
+      && contains(safehouseZone, previous.position) && contains(safehouseZone, nextPosition);
     const zombieStates = zombies.map((zombie) => zombie.getState());
     const doors = advanceDoorPressure(closed, state.doorDefenses, zombieStates, deltaMs);
     const openingsChanged = closed !== doors.closed;
@@ -728,6 +740,7 @@ function makeGameCoordinator({
       closedOpeningIds: openingsChanged ? closed.map(({ name }) => name) : state.closedOpeningIds,
       lockedDoorIds: openingsChanged ? state.lockedDoorIds.filter((id) => closed.some(({ name }) => name === id)) : state.lockedDoorIds,
       occupiedHouseId: getHouseAt(nextPosition, state.occupiedHouseId),
+      safehouse: advanceSafehouse(state.safehouse, state.activeTimeMs, activeTimeMs, stayedInside),
       activeTimeMs,
       gameOver,
       restNotice: traveled > 0 ? null : state.restNotice,
@@ -817,6 +830,14 @@ function makeGameCoordinator({
       pointerTarget = target;
     },
     step,
+    chooseSafehouse(houseId) {
+      const house = eligibleSafehouses.get(houseId);
+      if (!house || houseId !== state.occupiedHouseId || !contains(house, state.survivor.position)
+        || state.safehouse?.houseId === houseId || pause.getPauseState().isPaused || state.gameOver || state.sleep) return false;
+      state = { ...state, safehouse: { houseId, nights: 0, dawnMs: null } };
+      notify();
+      return true;
+    },
     startMeleeSwing(target) {
       const { survivor } = state;
       const weapon = equippedMeleeKind(survivor);
@@ -937,7 +958,7 @@ function makeGameCoordinator({
         const doorDefenses: DoorDefenses = { ...state.doorDefenses, [id]: {
           pressureMs: state.doorDefenses[id]?.pressureMs ?? 0,
           wedged: !barricaded,
-          ...(barricaded ? { barricaded: true } : {}),
+          ...(barricaded ? { barricaded: true, boardItemId: itemId } : {}),
         } };
         if (barricaded) emitSound({ position: state.survivor.position, reach: 9 });
         state = {

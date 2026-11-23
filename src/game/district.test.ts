@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { districtBuildings } from './district.ts';
 import { createGameCoordinator, restoreGameCoordinator } from './gameCoordinator.ts';
+import { authoredStock } from './items.ts';
 import { findRoute } from './navigation.ts';
 import { dayLengthMs, neighborhoodTime } from './survival.ts';
 import { canTraverse, hasLineOfSight, houses, initiallyClosed, openings, project } from './world.ts';
@@ -10,7 +11,7 @@ test('the avenue connects the starter block to six blocks with enterable destina
   assert.equal(houses.length, 21);
   assert.equal(districtBuildings.filter(({ featured }) => featured).length, 6);
   assert.ok(canTraverse({ x: 48.6, y: 20.4 }, { x: 124, y: 20.4 }));
-  for (const { id, name, house, stock } of districtBuildings) {
+  for (const { id, name, house } of districtBuildings) {
     const doorstep = { x: house.x + house.width / 2, y: house.y + house.height + 1 };
     const kitchen = { x: house.x + 1.3, y: house.y + 2.15 };
     assert.ok(findRoute(doorstep, kitchen), name);
@@ -19,7 +20,7 @@ test('the avenue connects the starter block to six blocks with enterable destina
     assert.equal(target?.id, `${id}_cabinet`);
     assert.ok(target);
     assert.deepEqual(game.interact(target), { status: 'searched' });
-    assert.deepEqual(game.getState().containers[target.id]?.map(({ kind }) => kind), stock);
+    assert.deepEqual(game.getState().containers[target.id]?.map(({ kind }) => kind), authoredStock[target.id]);
   }
 });
 
